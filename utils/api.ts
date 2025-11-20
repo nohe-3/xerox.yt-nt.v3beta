@@ -1,3 +1,4 @@
+
 import type { Video, VideoDetails, Channel, ChannelDetails, ApiPlaylist, Comment, PlaylistDetails, SearchResults, HomeVideo, HomePlaylist, ChannelHomeData } from '../types';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ja';
@@ -199,6 +200,7 @@ export async function getExternalRelatedVideos(videoId: string): Promise<Video[]
         const items = Array.isArray(data) ? data : (data.items || data.related_videos || []);
         
         return items.map((item: any) => {
+            // Check if item is already formatted or needs mapping
             if (item.id && item.thumbnailUrl && item.channelName) return item as Video;
             return mapYoutubeiVideoToVideo(item);
         }).filter((v: any): v is Video => v !== null);

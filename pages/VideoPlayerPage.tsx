@@ -82,16 +82,26 @@ const VideoPlayerPage: React.FC = () => {
             window.scrollTo(0, 0);
 
             try {
+                // Video Details and Comments
                 const detailsPromise = getVideoDetails(videoId);
                 const commentsPromise = getComments(videoId);
+                
+                // Fetch related videos from the specific external API requested
+                // https://siawaseok.duckdns.org/api/video2/ID
                 const relatedPromise = getExternalRelatedVideos(videoId);
                 
                 const [details, commentsData, externalRelated] = await Promise.all([detailsPromise, commentsPromise, relatedPromise]);
                 
                 setVideoDetails(details);
                 setComments(commentsData);
-                // If external API returns videos, use them. Otherwise fallback to internal related.
-                setRelatedVideos(externalRelated.length > 0 ? externalRelated : details.relatedVideos);
+                
+                // Prioritize external API results for related videos
+                if (externalRelated && externalRelated.length > 0) {
+                    setRelatedVideos(externalRelated);
+                } else {
+                    setRelatedVideos(details.relatedVideos);
+                }
+
                 addVideoToHistory(details);
 
             } catch (err: any) {
@@ -156,7 +166,7 @@ const VideoPlayerPage: React.FC = () => {
 
     if (error && !videoDetails) {
         return (
-            <div className="flex flex-col md:flex-row gap-6 max-w-[1280px] mx-auto px-4 md:px-6">
+            <div className="flex flex-col md:flex-row gap-6 max-w-[1750px] mx-auto px-4 md:px-6">
                 <div className="flex-grow lg:w-2/3">
                     <div className="aspect-video bg-yt-black rounded-xl overflow-hidden">
                         {videoId && playerParams && (
@@ -191,7 +201,8 @@ const VideoPlayerPage: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col md:flex-row gap-6 max-w-[1280px] mx-auto pt-2 md:pt-6 px-4 md:px-6 justify-center">
+        <div className="flex flex-col lg:flex-row gap-6 max-w-[1750px] mx-auto pt-2 md:pt-6 px-4 md:px-6 justify-center">
+            {/* Main Content Column */}
             <div className="flex-1 min-w-0 max-w-full">
                 {/* Video Player */}
                 <div className="w-full aspect-video bg-yt-black rounded-xl overflow-hidden shadow-lg relative z-10">
@@ -200,24 +211,27 @@ const VideoPlayerPage: React.FC = () => {
 
                 <div className="">
                     {/* Title */}
-                    <h1 className="text-lg md:text-xl font-bold mt-3 mb-2 text-black dark:text-white line-clamp-2">{videoDetails.title}</h1>
+                    <h1 className="text-lg md:text-xl font-bold mt-3 mb-2 text-black dark:text-white break-words">{videoDetails.title}</h1>
 
-                    {/* Actions Bar Container */}
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-2">
+                    {/* Actions Bar Container - Modified for better spacing and no overlap */}
+                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 pb-2">
                         {/* Left: Channel Info & Subscribe */}
-                        <div className="flex items-center min-w-0 gap-3">
-                            <Link to={`/channel/${videoDetails.channel.id}`} className="flex-shrink-0">
-                                <img src={videoDetails.channel.avatarUrl} alt={videoDetails.channel.name} className="w-9 h-9 md:w-10 md:h-10 rounded-full object-cover" />
-                            </Link>
-                            <div className="flex flex-col mr-2 sm:mr-4">
-                                <Link to={`/channel/${videoDetails.channel.id}`} className="font-bold text-sm md:text-base text-black dark:text-white hover:text-opacity-80 truncate max-w-[120px] sm:max-w-xs">
-                                    {videoDetails.channel.name}
+                        <div className="flex items-center justify-between md:justify-start w-full md:w-auto gap-4">
+                            <div className="flex items-center min-w-0 flex-1 md:flex-initial">
+                                <Link to={`/channel/${videoDetails.channel.id}`} className="flex-shrink-0">
+                                    <img src={videoDetails.channel.avatarUrl} alt={videoDetails.channel.name} className="w-10 h-10 rounded-full object-cover" />
                                 </Link>
-                                <span className="text-xs text-yt-light-gray truncate">{videoDetails.channel.subscriberCount}</span>
+                                <div className="flex flex-col ml-3 mr-4 min-w-0">
+                                    <Link to={`/channel/${videoDetails.channel.id}`} className="font-bold text-base text-black dark:text-white hover:text-opacity-80 truncate block">
+                                        {videoDetails.channel.name}
+                                    </Link>
+                                    <span className="text-xs text-yt-light-gray truncate block">{videoDetails.channel.subscriberCount}</span>
+                                </div>
                             </div>
+                            
                             <button 
                                 onClick={handleSubscriptionToggle} 
-                                className={`px-3 sm:px-4 py-2 rounded-full text-xs md:text-sm font-medium transition-colors whitespace-nowrap ${
+                                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
                                     subscribed 
                                     ? 'bg-yt-light dark:bg-[#272727] text-black dark:text-white hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f]' 
                                     : 'bg-black dark:bg-white text-white dark:text-black hover:opacity-90'
@@ -228,7 +242,7 @@ const VideoPlayerPage: React.FC = () => {
                         </div>
 
                         {/* Right: Action Buttons */}
-                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 sm:pb-0">
+                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 md:pb-0 w-full md:w-auto">
                             <div className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0">
                                 <button className="flex items-center px-3 sm:px-4 h-full border-r border-yt-light-gray/20 gap-2">
                                     <LikeIcon />
@@ -301,7 +315,7 @@ const VideoPlayerPage: React.FC = () => {
             </div>
             
             {/* Sidebar: Playlist & Related Videos */}
-            <div className="w-full md:w-[280px] lg:w-[350px] xl:w-[400px] flex-shrink-0 flex flex-col gap-4 pb-10">
+            <div className="w-full lg:w-[350px] xl:w-[400px] flex-shrink-0 flex flex-col gap-4 pb-10">
                 {currentPlaylist && (
                      <PlaylistPanel playlist={currentPlaylist} authorName={currentPlaylist.authorName} videos={playlistVideos} currentVideoId={videoId} isShuffle={isShuffle} isLoop={isLoop} toggleShuffle={toggleShuffle} toggleLoop={toggleLoop} onReorder={handlePlaylistReorder} />
                 )}
