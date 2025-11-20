@@ -3,6 +3,7 @@ import { Innertube } from "youtubei.js";
 
 const app = express();
 
+// CORS設定
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -10,84 +11,81 @@ app.use((req, res, next) => {
   next();
 });
 
+// YouTubeクライアントの作成ヘルパー
+const createYoutube = async () => {
+  return await Innertube.create({ 
+    lang: "ja", 
+    location: "JP",
+    // 署名エラー対策: キャッシュを使用しない設定にする場合などがあればここに記述
+  });
+};
+
+// -------------------------------------------------------------------
 // 動画詳細 API (/api/video)
+// -------------------------------------------------------------------
 app.get('/api/video', async (req, res) => {
   try {
-    const youtube = await Innertube.create({ lang: "ja", location: "JP" });
+    const youtube = await createYoutube();
     const { id } = req.query;
     if (!id) return res.status(400).json({ error: "Missing video id" });
 
     const info = await youtube.getInfo(id);
 
-    // 関連動画を最大50件取得するロジック
+    // 関連動画取得ロジック
     let allCandidates = [];
     
     const addCandidates = (source) => {
-        if (Array.isArray(source)) {
-            allCandidates.push(...source);
-        }
+        if (Array.isArray(source)) allCandidates.push(...source);
     };
 
     addCandidates(info.watch_next_feed);
     addCandidates(info.related_videos);
-    if (info.secondary_info) {
-        addCandidates(info.secondary_info.watch_next_feed);
-    }
-    addCandidates(info.related);
+    
+    // 署名エラーが出てもメタデータは返せるようにする
+    try {
+      // 関連動画の続きを取得（失敗してもメイン情報は返す）
+      let continuationCount = 0;
+      // 現在のFeedを保持
+      let currentFeed = info; 
+      
+      // すでに取得済みのIDを記録
+      const seenIds = new Set();
+      const relatedVideos = [];
+      const MAX_VIDEOS = 50;
 
-    const overlays = info.player_overlays || info.playerOverlays;
-    if (overlays) {
-        const endScreen = overlays.end_screen || overlays.endScreen;
-        if (endScreen && Array.isArray(endScreen.results)) {
-            addCandidates(endScreen.results);
-        }
-    }
+      // 既存候補から抽出
+      for (const video of allCandidates) {
+         if(video.id) seenIds.add(video.id);
+         relatedVideos.push(video);
+      }
 
-    const relatedVideos = [];
-    const seenIds = new Set();
-    const MAX_VIDEOS = 50;
+      // 足りなければ続きを取得
+      while (relatedVideos.length < MAX_VIDEOS && continuationCount < 2) {
+          if (typeof currentFeed.getWatchNextContinuation === 'function') {
+              currentFeed = await currentFeed.getWatchNextContinuation();
+              if (currentFeed && Array.isArray(currentFeed.watch_next_feed)) {
+                  for (const video of currentFeed.watch_next_feed) {
+                      if (relatedVideos.length >= MAX_VIDEOS) break;
+                      if (video.id && !seenIds.has(video.id)) {
+                          seenIds.add(video.id);
+                          relatedVideos.push(video);
+                      }
+                  }
+              }
+          } else {
+              break;
+          }
+          continuationCount++;
+      }
+      
+      // 整形したリストを上書き
+      info.watch_next_feed = relatedVideos;
 
-    for (const video of allCandidates) {
-        if (relatedVideos.length >= MAX_VIDEOS) break;
-        if (!video) continue;
-        const videoId = video.id || video.videoId;
-        if (typeof videoId === 'string' && videoId.length === 11 && !seenIds.has(videoId)) {
-            seenIds.add(videoId);
-            relatedVideos.push(video);
-        }
-    }
-
-    let continuationCount = 0;
-    while (relatedVideos.length < MAX_VIDEOS && continuationCount < 5) {
-        try {
-            if (typeof info.getWatchNextContinuation === 'function') {
-                const nextInfo = await info.getWatchNextContinuation();
-                if (nextInfo && Array.isArray(nextInfo.watch_next_feed)) {
-                    let addedCount = 0;
-                    for (const video of nextInfo.watch_next_feed) {
-                        if (relatedVideos.length >= MAX_VIDEOS) break;
-                        const videoId = video.id || video.videoId;
-                        if (typeof videoId === 'string' && videoId.length === 11 && !seenIds.has(videoId)) {
-                            seenIds.add(videoId);
-                            relatedVideos.push(video);
-                            addedCount++;
-                        }
-                    }
-                    if (addedCount === 0) break;
-                } else {
-                    break; 
-                }
-            } else {
-                break; 
-            }
-        } catch (e) {
-            console.log('Failed to fetch continuation:', e.message);
-            break;
-        }
-        continuationCount++;
+    } catch (e) {
+      console.warn('[API] Continuation failed, returning basic info:', e.message);
     }
 
-    info.watch_next_feed = relatedVideos;
+    // 不要なデータを削減してレスポンス
     if (info.secondary_info) info.secondary_info.watch_next_feed = [];
     info.related_videos = [];
     info.related = [];
@@ -100,25 +98,24 @@ app.get('/api/video', async (req, res) => {
   }
 });
 
-// 検索 API (/api/search) - カテゴリ分け対応
+// -------------------------------------------------------------------
+// 検索 API (/api/search)
+// -------------------------------------------------------------------
 app.get('/api/search', async (req, res) => {
   try {
-    const youtube = await Innertube.create({ lang: "ja", location: "JP" });
+    const youtube = await createYoutube();
     const { q: query } = req.query;
     if (!query) return res.status(400).json({ error: "Missing search query" });
 
     const search = await youtube.search(query);
     
-    const videos = search.videos || [];
-    const shorts = search.shorts || [];
-    const channels = search.channels || [];
-    const playlists = search.playlists || [];
-
+    // v9以降は .videos, .shorts などがgetterとして用意されていることが多い
+    // ない場合は raw データを返す
     res.status(200).json({
-        videos,
-        shorts,
-        channels,
-        playlists
+        videos: search.videos || [],
+        shorts: search.shorts || [],
+        channels: search.channels || [],
+        playlists: search.playlists || []
     });
   } catch (err) { 
       console.error('Error in /api/search:', err); 
@@ -127,50 +124,87 @@ app.get('/api/search', async (req, res) => {
 });
 
 // -------------------------------------------------------------------
-// その他のAPI
+// コメント API (/api/comments)
 // -------------------------------------------------------------------
 app.get('/api/comments', async (req, res) => {
   try {
-    const youtube = await Innertube.create({ lang: "ja", location: "JP" });
+    const youtube = await createYoutube();
     const { id } = req.query;
     if (!id) return res.status(400).json({ error: "Missing video id" });
+    
     const limit = 300;
     let commentsSection = await youtube.getComments(id);
     let allComments = commentsSection.contents || [];
-    while (allComments.length < limit && commentsSection.has_continuation) {
+    
+    // 続きのコメントを取得
+    let attempts = 0;
+    while (allComments.length < limit && commentsSection.has_continuation && attempts < 5) {
       commentsSection = await commentsSection.getContinuation();
-      allComments = allComments.concat(commentsSection.contents);
+      if (commentsSection.contents) {
+        allComments = allComments.concat(commentsSection.contents);
+      }
+      attempts++;
     }
+
     res.status(200).json({
       comments: allComments.slice(0, limit).map(c => ({
-        text: c.comment?.content?.text ?? null, comment_id: c.comment?.comment_id ?? null, published_time: c.comment?.published_time ?? null,
-        author: { id: c.comment?.author?.id ?? null, name: c.comment?.author?.name ?? null, thumbnails: c.comment?.author?.thumbnails ?? [] },
-        like_count: c.comment?.like_count?.toString() ?? '0', reply_count: c.comment?.reply_count?.toString() ?? '0', is_pinned: c.comment?.is_pinned ?? false
+        text: c.comment?.content?.text ?? null,
+        comment_id: c.comment?.comment_id ?? null,
+        published_time: c.comment?.published_time?.text ?? c.comment?.published_time ?? null,
+        author: { 
+            id: c.comment?.author?.id ?? null, 
+            name: c.comment?.author?.name?.text ?? c.comment?.author?.name ?? null, 
+            thumbnails: c.comment?.author?.thumbnails ?? [] 
+        },
+        like_count: c.comment?.like_count?.toString() ?? '0',
+        reply_count: c.comment?.reply_count?.toString() ?? '0',
+        is_pinned: c.comment?.is_pinned ?? false
       }))
     });
-  } catch (err) { console.error('Error in /api/comments:', err); res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error('Error in /api/comments:', err); 
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
+// -------------------------------------------------------------------
+// チャンネル API (/api/channel)
+// -------------------------------------------------------------------
 app.get('/api/channel', async (req, res) => {
   try {
-    const youtube = await Innertube.create({ lang: "ja", location: "JP" });
+    const youtube = await createYoutube();
     const { id, page = '1' } = req.query;
     if (!id) return res.status(400).json({ error: "Missing channel id" });
+
     const channel = await youtube.getChannel(id);
+    
+    // 最初の動画リストを取得
     let videosFeed = await channel.getVideos();
-    for (let i = 1; i < parseInt(page); i++) {
+    
+    // 動画を蓄積するための配列を用意（videosFeed.videosは読み取り専用なので上書きしない）
+    let allVideos = [...(videosFeed.videos || [])];
+
+    // ページネーション処理
+    const targetPage = parseInt(page);
+    // 1ページ目は既に取得しているので、2ページ目以降を取得
+    for (let i = 1; i < targetPage; i++) {
       if (videosFeed.has_continuation) {
+        // 次のフィードを取得して更新
         videosFeed = await videosFeed.getContinuation();
+        // 新しい動画を追加
+        if (videosFeed.videos) {
+            allVideos.push(...videosFeed.videos);
+        }
       } else {
-        videosFeed.videos = [];
         break;
       }
     }
     
-    // Extract metadata with fallbacks (Updated to check header.author.name/thumbnails)
+    // メタデータの抽出
     const title = channel.metadata?.title || channel.header?.title?.text || channel.header?.author?.name || null;
-    
     let avatar = channel.metadata?.avatar || channel.header?.avatar || channel.header?.author?.thumbnails || null;
+    
+    // アバターURLの正規化
     if (Array.isArray(avatar) && avatar.length > 0) {
         avatar = avatar[0].url;
     } else if (typeof avatar === 'object' && avatar?.url) {
@@ -189,60 +223,146 @@ app.get('/api/channel', async (req, res) => {
         subscriberCount: channel.metadata?.subscriber_count?.pretty || '非公開', 
         videoCount: channel.metadata?.videos_count?.text ?? channel.metadata?.videos_count ?? '0'
       },
-      page: parseInt(page), 
-      videos: videosFeed.videos || []
+      page: targetPage, 
+      videos: allVideos, // 蓄積した配列を返す
+      hasContinuation: videosFeed.has_continuation // ページネーション判定用
     });
-  } catch (err) { console.error('Error in /api/channel:', err); res.status(500).json({ error: err.message }); }
+
+  } catch (err) { 
+      console.error('Error in /api/channel:', err); 
+      // エラーでもJSONを返せるようにする
+      res.status(500).json({ error: err.message }); 
+  }
 });
 
+// -------------------------------------------------------------------
+// チャンネル Shorts API (/api/channel-shorts)
+// -------------------------------------------------------------------
 app.get('/api/channel-shorts', async (req, res) => {
   try {
-    const youtube = await Innertube.create({ lang: "ja", location: "JP" });
+    const youtube = await createYoutube();
     const { id } = req.query;
     if (!id) return res.status(400).json({ error: "Missing channel id" });
+
     const channel = await youtube.getChannel(id);
-    const shortsPage = await channel.getShorts();
+    const shortsFeed = await channel.getShorts();
     
-    // Fetch shorts from the first tab's contents, as per youtubei.js v9 structure
-    // Fallback to empty array if structure doesn't match
-    const shorts = shortsPage?.contents?.[0]?.contents || [];
+    // .videos getter が存在する場合はそれを使う（バージョンによる互換性確保）
+    // 存在しない場合は contents[0].contents 等の深いネストを探す
+    let shorts = [];
     
+    if (shortsFeed.videos) {
+        shorts = shortsFeed.videos;
+    } else if (shortsFeed.contents && Array.isArray(shortsFeed.contents)) {
+        // Tab -> RichGrid -> contents のような構造を想定
+        const tabContent = shortsFeed.contents[0];
+        if (tabContent && tabContent.contents) {
+            shorts = tabContent.contents;
+        }
+    }
+
     res.status(200).json(shorts);
-  } catch (err) { console.error('Error in /api/channel-shorts:', err); res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+      console.error('Error in /api/channel-shorts:', err); 
+      res.status(500).json({ error: err.message }); 
+  }
 });
 
+// -------------------------------------------------------------------
+// チャンネル Playlists API (/api/channel-playlists)
+// -------------------------------------------------------------------
 app.get('/api/channel-playlists', async (req, res) => {
   try {
-    const youtube = await Innertube.create({ lang: "ja", location: "JP" });
+    const youtube = await createYoutube();
     const { id } = req.query;
     if (!id) return res.status(400).json({ error: "Missing channel id" });
+
     const channel = await youtube.getChannel(id);
-    const playlistsPage = await channel.getPlaylists();
+    const playlistsFeed = await channel.getPlaylists();
     
-    // Fetch playlists from the first tab's contents, as per youtubei.js v9 structure
-    const playlists = playlistsPage?.contents?.[0]?.contents || [];
+    let playlists = [];
+    
+    // .playlists getter がある場合
+    if (playlistsFeed.playlists) {
+        playlists = playlistsFeed.playlists;
+    } 
+    // .items getter がある場合
+    else if (playlistsFeed.items) {
+        playlists = playlistsFeed.items;
+    }
+    // 構造を手動で掘る場合
+    else if (playlistsFeed.contents && Array.isArray(playlistsFeed.contents)) {
+        const tabContent = playlistsFeed.contents[0];
+        if (tabContent && tabContent.contents) {
+             playlists = tabContent.contents;
+        }
+    }
 
     res.status(200).json({ playlists: playlists });
-  } catch (err) { console.error('Error in /api/channel-playlists:', err); res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+      console.error('Error in /api/channel-playlists:', err); 
+      res.status(500).json({ error: err.message }); 
+  }
 });
 
+// -------------------------------------------------------------------
+// 再生リスト API (/api/playlist)
+// -------------------------------------------------------------------
 app.get('/api/playlist', async (req, res) => {
   try {
-    const youtube = await Innertube.create({ lang: "ja", location: "JP" });
+    const youtube = await createYoutube();
     const { id: playlistId } = req.query;
     if (!playlistId) return res.status(400).json({ error: "Missing playlist id" });
+
     const playlist = await youtube.getPlaylist(playlistId);
     if (!playlist.info?.id) return res.status(404).json({ error: "Playlist not found"});
+    
     res.status(200).json(playlist);
-  } catch (err) { console.error('Error in /api/playlist:', err); res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+      console.error('Error in /api/playlist:', err); 
+      res.status(500).json({ error: err.message }); 
+  }
 });
 
+// -------------------------------------------------------------------
+// 急上昇 API (/api/fvideo)
+// -------------------------------------------------------------------
 app.get('/api/fvideo', async (req, res) => {
   try {
-    const youtube = await Innertube.create({ lang: "ja", location: "JP" });
+    const youtube = await createYoutube();
     const trending = await youtube.getTrending("Music");
     res.status(200).json(trending);
-  } catch (err) { console.error('Error in /api/fvideo:', err); res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+      console.error('Error in /api/fvideo:', err); 
+      res.status(500).json({ error: err.message }); 
+  }
 });
+
+// -------------------------------------------------------------------
+// ストリーム API (/api/stream)
+// -------------------------------------------------------------------
+app.get('/api/stream', async (req, res) => {
+    try {
+      const youtube = await createYoutube();
+      const { id } = req.query;
+      if (!id) return res.status(400).json({ error: "Missing video id" });
+  
+      const info = await youtube.getInfo(id);
+      const format = info.chooseFormat({ type: 'video', quality: 'best' });
+      const audioFormat = info.chooseFormat({ type: 'audio', quality: 'best' });
+      
+      if (!format) return res.status(404).json({ error: "No suitable video format found" });
+      
+      const result = {
+          video_url: format.url,
+          audio_url: audioFormat ? audioFormat.url : undefined
+      };
+      
+      res.status(200).json(result);
+    } catch (err) {
+      console.error('Error in /api/stream:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
 export default app;

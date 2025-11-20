@@ -1,7 +1,6 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import VideoGrid from '../components/VideoGrid';
-import ShortsShelf from '../components/ShortsShelf';
 import { searchVideos, getChannelVideos, getRecommendedVideos } from '../utils/api';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { useSearchHistory } from '../contexts/SearchHistoryContext';
@@ -9,9 +8,7 @@ import type { Video } from '../types';
 
 const HomePage: React.FC = () => {
     const [recommendedVideos, setRecommendedVideos] = useState<Video[]>([]);
-    const [shorts, setShorts] = useState<Video[]>([]);
     const [isLoadingRecommended, setIsLoadingRecommended] = useState(true);
-    const [isLoadingShorts, setIsLoadingShorts] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const { subscribedChannels } = useSubscription();
@@ -78,30 +75,11 @@ const HomePage: React.FC = () => {
         }
     }, [subscribedChannels, searchHistory]);
 
-    const loadShorts = useCallback(async () => {
-        setIsLoadingShorts(true);
-        try {
-            // Reduce fetch sources to just the generic #shorts tag
-            const { videos } = await searchVideos('#shorts');
-            
-            const uniqueShorts = Array.from(new Map(videos.map(v => [v.id, v])).values());
-            const filteredShorts = uniqueShorts.filter(v => v.isoDuration && (parseISODuration(v.isoDuration) <= 60));
-            
-            // Limit the number of shorts displayed on the shelf
-            setShorts(shuffleArray(filteredShorts).slice(0, 5));
-        } catch (err) {
-            console.error('Failed to load shorts:', err);
-        } finally {
-            setIsLoadingShorts(false);
-        }
-    }, []);
-
 
     useEffect(() => {
         setError(null);
         loadRecommended();
-        loadShorts();
-    }, [loadRecommended, loadShorts]);
+    }, [loadRecommended]);
     
 
     if (error) {
@@ -110,7 +88,6 @@ const HomePage: React.FC = () => {
 
     return (
         <div className="space-y-8">
-            <ShortsShelf shorts={shorts} isLoading={isLoadingShorts} />
             <VideoGrid videos={recommendedVideos} isLoading={isLoadingRecommended} />
         </div>
     );

@@ -1,16 +1,16 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { getChannelDetails, getChannelVideos, getChannelPlaylists, getPlaylistDetails, getChannelShorts } from '../utils/api';
+import { useParams } from 'react-router-dom';
+import { getChannelDetails, getChannelVideos, getChannelPlaylists, getPlaylistDetails } from '../utils/api';
 import type { ChannelDetails, Video, ApiPlaylist, Channel } from '../types';
 import VideoGrid from '../components/VideoGrid';
 import VideoCardSkeleton from '../components/icons/VideoCardSkeleton';
-import ShortsCard from '../components/ShortsCard';
 import SearchPlaylistResultCard from '../components/SearchPlaylistResultCard';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { usePlaylist } from '../contexts/PlaylistContext';
 import { AddToPlaylistIcon } from '../components/icons/Icons';
 
-type Tab = 'videos' | 'shorts' | 'playlists';
+type Tab = 'videos' | 'playlists';
 
 const useInfiniteScroll = (callback: () => void, hasMore: boolean) => {
     const observer = useRef<IntersectionObserver | null>(null);
@@ -34,7 +34,6 @@ const ChannelPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<Tab>('videos');
 
     const [videos, setVideos] = useState<Video[]>([]);
-    const [shorts, setShorts] = useState<Video[]>([]);
     const [playlists, setPlaylists] = useState<ApiPlaylist[]>([]);
     
     const [videosPageToken, setVideosPageToken] = useState<string | undefined>('1');
@@ -52,7 +51,6 @@ const ChannelPage: React.FC = () => {
             setIsLoading(true);
             setError(null);
             setVideos([]);
-            setShorts([]);
             setPlaylists([]);
             setVideosPageToken('1');
             setActiveTab('videos');
@@ -88,20 +86,9 @@ const ChannelPage: React.FC = () => {
                         channelAvatarUrl: channelDetails?.avatarUrl || v.channelAvatarUrl,
                         channelId: channelDetails?.id || v.channelId
                     }));
-                    setVideos(prev => pageToken && pageToken !== '1' ? [...prev, ...enrichedVideos] : enrichedVideos);
+                    // API returns accumulated videos, so we simply replace the current state
+                    setVideos(enrichedVideos);
                     setVideosPageToken(vData.nextPageToken);
-                    break;
-                case 'shorts':
-                     if (shorts.length === 0) {
-                        const sData = await getChannelShorts(channelId);
-                        const enrichedShorts = sData.videos.map(v => ({
-                            ...v,
-                            channelName: channelDetails?.name || v.channelName,
-                            channelAvatarUrl: channelDetails?.avatarUrl || v.channelAvatarUrl,
-                            channelId: channelDetails?.id || v.channelId
-                        }));
-                        setShorts(enrichedShorts);
-                    }
                     break;
                 case 'playlists':
                     if (playlists.length === 0) {
@@ -117,7 +104,7 @@ const ChannelPage: React.FC = () => {
             setIsTabLoading(false);
             setIsFetchingMore(false);
         }
-    }, [channelId, isFetchingMore, shorts.length, playlists.length, channelDetails]);
+    }, [channelId, isFetchingMore, playlists.length, channelDetails]);
     
     useEffect(() => {
         if (channelId && !isLoading) {
@@ -187,7 +174,6 @@ const ChannelPage: React.FC = () => {
     const renderTabContent = () => {
         const isInitialTabLoading = isTabLoading && (
             (activeTab === 'videos' && videos.length === 0) ||
-            (activeTab === 'shorts' && shorts.length === 0) ||
             (activeTab === 'playlists' && playlists.length === 0)
         );
 
@@ -209,14 +195,6 @@ const ChannelPage: React.FC = () => {
                         </div>
                     </>
                 ) : <div className="text-center p-8 text-yt-light-gray">このチャンネルには動画がありません。</div>;
-            case 'shorts':
-                return shorts.length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-8">
-                        {shorts.map(video => (
-                            <ShortsCard key={video.id} video={video} />
-                        ))}
-                    </div>
-                ) : <div className="text-center p-8 text-yt-light-gray">このチャンネルにはショート動画がありません。</div>;
             case 'playlists':
                 return playlists.length > 0 ? (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -302,7 +280,6 @@ const ChannelPage: React.FC = () => {
             <div className="border-b border-yt-spec-light-20 dark:border-yt-spec-20 mb-6">
                 <nav className="flex space-x-2">
                     <TabButton tab="videos" label="動画" />
-                    <TabButton tab="shorts" label="ショート" />
                     <TabButton tab="playlists" label="再生リスト" />
                 </nav>
             </div>
