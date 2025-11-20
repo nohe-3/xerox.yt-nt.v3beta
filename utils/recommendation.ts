@@ -1,6 +1,16 @@
 import type { Video, Channel } from '../types';
 import { searchVideos, getChannelVideos } from './api';
 
+// 人気の日本語ハッシュタグリスト
+const POPULAR_JP_TAGS = [
+    '#急上昇', '#切り抜き', '#歌ってみた', '#ゲーム実況', 
+    '#ASMR', '#Vtuber', '#アニメ', '#猫', '#犬', 
+    '#料理', '#大食い', '#メイク', '#vlog', 
+    '#ライブ', '#配信', '#神回', '#ドッキリ',
+    '#Minecraft', '#ポケモン', '#原神', '#ApexLegends', '#Valorant',
+    '#ニュース', '#政治', '#経済', '#スポーツ', '#野球', '#サッカー'
+];
+
 // 文字列からハッシュタグや重要そうなキーワードを抽出する
 const extractKeywords = (text: string): string[] => {
     if (!text) return [];
@@ -178,23 +188,24 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
     // ソース群の定義と重み付け（動的に計算）
     
     const hasHistory = watchHistory.length > 0 || searchHistory.length > 0;
-    // Xerox is default, so > 1 means user added subs
     const hasSubs = subscribedChannels.length > 1; 
 
     let wHistory = 40;
     let wSubs = 25;
-    let wFresh = 15; // Reduced from 20 (3/4 scale)
+    let wFresh = 15;
     let wKeywords = 10;
     let wDiscovery = 5;
+    let wHashtags = 20; // New source for popular hashtags
 
     // ユーザーデータに基づく自動調整
     if (hasHistory) {
-        if (watchHistory.length > 30) wHistory += 10; // 履歴が多い場合は履歴ベースを強化
+        if (watchHistory.length > 30) wHistory += 10;
         if (watchHistory.length > 100) wHistory += 10;
     } else {
-        wHistory = 5; // 履歴がない場合は最小限
-        wDiscovery += 15;
-        wFresh += 15; // 新規ユーザーには新しい動画を多めに
+        wHistory = 5;
+        wDiscovery += 10;
+        wFresh += 10;
+        wHashtags += 15; // 新規ユーザーには人気のハッシュタグを多めに
     }
 
     if (hasSubs) {
@@ -210,6 +221,7 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
         { type: 'history', weight: wHistory }, 
         { type: 'subs', weight: wSubs },
         { type: 'fresh', weight: wFresh },
+        { type: 'hashtags', weight: wHashtags },
         { type: 'keywords', weight: wKeywords }, 
         { type: 'discovery', weight: wDiscovery } 
     ];
@@ -265,13 +277,16 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
             
             case 'fresh':
                 // 新規動画を狙うクエリ
-                // 日本語のコンテンツが出やすいように日本語キーワードを混ぜる確率を上げる
                  if (Math.random() > 0.3) {
                     queries.add(`最新 ${randomTopic}`);
                 } else {
                     queries.add(`New ${randomTopic}`);
                 }
                 break;
+            
+            case 'hashtags':
+                 queries.add(POPULAR_JP_TAGS[Math.floor(Math.random() * POPULAR_JP_TAGS.length)]);
+                 break;
 
             case 'keywords':
                  if (preferredGenres.length > 0) {

@@ -372,8 +372,11 @@ app.get('/api/playlist', async (req, res) => {
 app.get('/api/fvideo', async (req, res) => {
   try {
     const youtube = await createYoutube();
-    const trending = await youtube.getTrending("Music");
-    res.status(200).json(trending);
+    // 一般的な急上昇を取得 (Music指定を解除)
+    const trending = await youtube.getTrending();
+    // 構造の揺れに対応
+    const videos = trending.videos || trending.items || trending.contents || [];
+    res.status(200).json({ videos });
   } catch (err) { 
       console.error('Error in /api/fvideo:', err); 
       res.status(500).json({ error: err.message }); 
