@@ -101,3 +101,11 @@ export interface Comment {
   reply_count: string;
   is_pinned: boolean;
 }
+
+export interface SearchResults {
+    videos: Video[];
+    shorts: Video[];
+    channels: Channel[];
+    playlists: ApiPlaylist[];
+    nextPageToken?: string;
+}

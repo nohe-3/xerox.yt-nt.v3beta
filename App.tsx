@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -15,32 +15,53 @@ import { useTheme } from './hooks/useTheme';
 
 const App: React.FC = () => {
   const [theme, toggleTheme] = useTheme();
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const location = useLocation();
+  const isPlayerPage = location.pathname.startsWith('/watch');
+  const isShortsPage = location.pathname === '/shorts';
+
+  // 初期状態：プレイヤーページなら閉じる、それ以外は開く
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(!isPlayerPage);
+
+  // ページ遷移時にプレイヤーページならサイドバーを閉じる
+  useEffect(() => {
+    if (isPlayerPage) {
+        setIsSidebarOpen(false);
+    } else if (!isShortsPage) {
+        // ホーム等に戻った時はデフォルトで開く（好みに応じて変更可）
+        setIsSidebarOpen(true);
+    }
+  }, [location.pathname, isPlayerPage, isShortsPage]);
 
   const toggleSidebar = useCallback(() => {
     setIsSidebarOpen(prev => !prev);
   }, []);
 
-  const isPlayerPage = location.pathname.startsWith('/watch');
-  const isShortsPage = location.pathname === '/shorts';
-  
   const getMargin = () => {
-    if (isPlayerPage || isShortsPage) return '';
-    if (isSidebarOpen) return 'ml-56';
+    if (isShortsPage) return ''; // ショートは全画面
+    
+    // プレイヤーページでもサイドバーが開いているときはマージンを取る（右に寄せる/リサイズ）
+    if (isSidebarOpen) return 'ml-56'; 
+    
+    // プレイヤーページで閉じているときはマージンなし（またはミニサイドバーがないので0）
+    if (isPlayerPage && !isSidebarOpen) return ''; 
+
+    // 通常ページで閉じているときはミニサイドバー分
     return 'ml-[72px]';
   };
 
   const mainContentMargin = getMargin();
-  const mainContentPadding = isShortsPage ? '' : isPlayerPage ? 'p-6 lg:px-24' : 'p-6';
+  // プレイヤーページのパディング調整
+  const mainContentPadding = isShortsPage ? '' : isPlayerPage ? 'p-6' : 'p-6';
   
-  // サイドバーの表示ロジックを修正
-  // 通常ページでは常に表示（開閉はSidebarコンポーネント内部で制御）
-  // プレーヤーページでは、isSidebarOpenがtrueの時だけオーバーレイとして表示
-  // ショートページでは非表示
+  // プレイヤーページでサイドバーが開いているときは、通常のサイドバーを表示
+  // 閉じているときは何も表示しない（オーバーレイではなく、完全に隠す仕様にするため）
+  // 通常ページでは常に表示（Sidebarコンポーネント内でミニ/フルを切り替え）
   const shouldShowSidebar = () => {
     if (isShortsPage) return false;
-    if (isPlayerPage) return isSidebarOpen;
+    // プレイヤーページの場合、開いている時だけ表示（SidebarコンポーネントはfixedなのでApp側で制御が必要）
+    // ただしSidebarコンポーネント自体が固定配置なので、条件分岐はSidebarに渡すisOpenだけで制御できるが、
+    // 閉じた時のミニバー表示を消したい場合は条件が必要
+    if (isPlayerPage && !isSidebarOpen) return false; 
     return true;
   };
 
@@ -53,7 +74,7 @@ const App: React.FC = () => {
       />
       <div className="flex">
         {shouldShowSidebar() && <Sidebar isOpen={isSidebarOpen} />}
-        <main className={`flex-1 mt-14 ${mainContentMargin} ${mainContentPadding} transition-all duration-300`}>
+        <main className={`flex-1 mt-14 ${mainContentMargin} ${mainContentPadding} transition-all duration-300 ease-in-out`}>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/watch/:videoId" element={<VideoPlayerPage />} />

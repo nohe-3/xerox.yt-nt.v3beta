@@ -1,15 +1,21 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { searchVideos } from '../utils/api';
-import type { Video } from '../types';
+import type { Video, Channel, ApiPlaylist } from '../types';
 import SearchVideoResultCard from '../components/SearchVideoResultCard';
+import SearchChannelResultCard from '../components/SearchChannelResultCard';
+import SearchPlaylistResultCard from '../components/SearchPlaylistResultCard';
+import ShortsShelf from '../components/ShortsShelf';
 
 const SearchResultsPage: React.FC = () => {
     const [searchParams] = useSearchParams();
     const query = searchParams.get('search_query');
     
     const [videos, setVideos] = useState<Video[]>([]);
+    const [shorts, setShorts] = useState<Video[]>([]);
+    const [channels, setChannels] = useState<Channel[]>([]);
+    const [playlists, setPlaylists] = useState<ApiPlaylist[]>([]);
+    
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -20,8 +26,11 @@ const SearchResultsPage: React.FC = () => {
         setIsLoading(true);
         
         try {
-            const { videos: newVideos } = await searchVideos(searchQuery);
-            setVideos(newVideos);
+            const results = await searchVideos(searchQuery);
+            setVideos(results.videos);
+            setShorts(results.shorts);
+            setChannels(results.channels);
+            setPlaylists(results.playlists);
         } catch (err: any) {
             setError(err.message);
             console.error(err);
@@ -32,6 +41,9 @@ const SearchResultsPage: React.FC = () => {
 
     useEffect(() => {
         setVideos([]);
+        setShorts([]);
+        setChannels([]);
+        setPlaylists([]);
         if (query) {
             performSearch(query);
         } else {
@@ -41,14 +53,15 @@ const SearchResultsPage: React.FC = () => {
 
     if (isLoading) {
         return (
-             <div className="flex flex-col space-y-4">
-                {Array.from({ length: 10 }).map((_, index) => (
-                   <div key={index} className="flex space-x-4 animate-pulse">
-                        <div className="w-64 h-36 bg-yt-light dark:bg-yt-dark-gray rounded-lg"></div>
-                        <div className="flex-1 space-y-3 py-1">
-                            <div className="h-4 bg-yt-light dark:bg-yt-dark-gray rounded w-3/4"></div>
-                            <div className="h-4 bg-yt-light dark:bg-yt-dark-gray rounded w-1/2"></div>
+             <div className="flex flex-col space-y-6 max-w-6xl mx-auto p-4">
+                {/* Skeleton */}
+                {Array.from({ length: 5 }).map((_, index) => (
+                   <div key={index} className="flex flex-col sm:flex-row gap-4 animate-pulse">
+                        <div className="w-full sm:w-[360px] aspect-video bg-yt-light dark:bg-yt-dark-gray rounded-xl"></div>
+                        <div className="flex-1 space-y-3 py-2">
+                            <div className="h-5 bg-yt-light dark:bg-yt-dark-gray rounded w-3/4"></div>
                             <div className="h-4 bg-yt-light dark:bg-yt-dark-gray rounded w-1/3"></div>
+                            <div className="h-8 w-8 rounded-full bg-yt-light dark:bg-yt-dark-gray"></div>
                         </div>
                    </div>
                 ))}
@@ -60,13 +73,44 @@ const SearchResultsPage: React.FC = () => {
         return <div className="text-center text-red-500 bg-red-100 dark:bg-red-900/50 p-4 rounded-lg">{error}</div>;
     }
 
-    if (videos.length === 0 && query) {
-        return <div className="text-center">「{query}」の検索結果はありません。</div>
+    if (videos.length === 0 && channels.length === 0 && playlists.length === 0 && shorts.length === 0 && query) {
+        return <div className="text-center mt-10">「{query}」の検索結果はありません。</div>
     }
 
     return (
-        <div className="max-w-4xl mx-auto">
-            <div className="flex flex-col space-y-4">
+        <div className="max-w-6xl mx-auto px-2 sm:px-4 py-4">
+            {/* Channels Section */}
+            {channels.length > 0 && (
+                <div className="mb-6 space-y-4">
+                    {channels.map(channel => (
+                        <SearchChannelResultCard key={channel.id} channel={channel} />
+                    ))}
+                </div>
+            )}
+
+            {/* Shorts Section */}
+            {shorts.length > 0 && (
+                <div className="mb-8 border-b border-yt-spec-light-20 dark:border-yt-spec-20 pb-8">
+                    <ShortsShelf shorts={shorts} isLoading={false} />
+                </div>
+            )}
+            
+            {/* Playlists Section */}
+            {playlists.length > 0 && (
+                <div className="mb-6">
+                    <h2 className="text-xl font-bold mb-4">プレイリスト</h2>
+                    <div className="space-y-4">
+                        {playlists.map(playlist => (
+                            <SearchPlaylistResultCard key={playlist.id} playlist={playlist} />
+                        ))}
+                    </div>
+                     <hr className="my-6 border-yt-spec-light-20 dark:border-yt-spec-20" />
+                </div>
+            )}
+
+            {/* Videos Section */}
+            <div className="flex flex-col space-y-2">
+                <h2 className="text-xl font-bold mb-2">動画</h2>
                 {videos.map((video, index) => (
                     <SearchVideoResultCard key={`${video.id}-${index}`} video={video} />
                 ))}

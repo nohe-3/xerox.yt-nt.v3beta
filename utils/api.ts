@@ -1,4 +1,4 @@
-import type { Video, VideoDetails, Channel, ChannelDetails, ApiPlaylist, Comment, PlaylistDetails } from '../types';
+import type { Video, VideoDetails, Channel, ChannelDetails, ApiPlaylist, Comment, PlaylistDetails, SearchResults } from '../types';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ja';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -77,7 +77,6 @@ export async function getPlayerConfig(): Promise<string> {
 const mapYoutubeiVideoToVideo = (item: any): Video | null => {
     if (!item?.id) return null;
     
-    // short_view_countの処理: "749万 回視聴" のような形式を想定
     let views = '視聴回数不明';
     if (item.view_count?.text) {
         views = `${formatJapaneseNumber(item.view_count.text)}回視聴`;
@@ -100,6 +99,29 @@ const mapYoutubeiVideoToVideo = (item: any): Video | null => {
     };
 };
 
+const mapYoutubeiChannelToChannel = (item: any): Channel | null => {
+    if(!item?.id) return null;
+    return {
+        id: item.id,
+        name: item.name || item.author?.name || 'No Name',
+        avatarUrl: item.thumbnails?.[0]?.url || '',
+        subscriberCount: item.subscriber_count?.text || item.video_count?.text || ''
+    };
+}
+
+const mapYoutubeiPlaylistToPlaylist = (item: any): ApiPlaylist | null => {
+    if(!item?.id) return null;
+    return {
+        id: item.id,
+        title: item.title?.text || item.title,
+        thumbnailUrl: item.thumbnails?.[0]?.url,
+        videoCount: parseInt(item.video_count?.text?.replace(/[^0-9]/g, '') || '0'),
+        author: item.author?.name,
+        authorId: item.author?.id
+    };
+}
+
+
 export interface StreamUrls {
     video_url: string;
     audio_url?: string;
@@ -117,13 +139,20 @@ export async function getRecommendedVideos(): Promise<{ videos: Video[] }> {
     return { videos };
 }
 
-export async function searchVideos(query: string, pageToken = '', channelId?: string): Promise<{ videos: Video[], nextPageToken?: string }> {
-    const data = await apiFetch(`search?q=${encodeURIComponent(query)}&limit=100`);
-    let videos: Video[] = Array.isArray(data) ? data.map(mapYoutubeiVideoToVideo).filter((v): v is Video => v !== null) : [];
+// Updated searchVideos to return all categories
+export async function searchVideos(query: string, pageToken = '', channelId?: string): Promise<SearchResults> {
+    const data = await apiFetch(`search?q=${encodeURIComponent(query)}&limit=50`);
+    
+    const videos: Video[] = Array.isArray(data.videos) ? data.videos.map(mapYoutubeiVideoToVideo).filter((v): v is Video => v !== null) : [];
+    const shorts: Video[] = Array.isArray(data.shorts) ? data.shorts.map(mapYoutubeiVideoToVideo).filter((v): v is Video => v !== null) : [];
+    const channels: Channel[] = Array.isArray(data.channels) ? data.channels.map(mapYoutubeiChannelToChannel).filter((c): c is Channel => c !== null) : [];
+    const playlists: ApiPlaylist[] = Array.isArray(data.playlists) ? data.playlists.map(mapYoutubeiPlaylistToPlaylist).filter((p): p is ApiPlaylist => p !== null) : [];
+
+    let filteredVideos = videos;
     if (channelId) {
-        videos = videos.filter(v => v.channelId === channelId);
+        filteredVideos = videos.filter(v => v.channelId === channelId);
     }
-    return { videos, nextPageToken: undefined };
+    return { videos: filteredVideos, shorts, channels, playlists, nextPageToken: undefined };
 }
 
 export async function getVideoDetails(videoId: string): Promise<VideoDetails> {
@@ -143,18 +172,9 @@ export async function getVideoDetails(videoId: string): Promise<VideoDetails> {
         subscriberCount: secondary?.owner?.subscriber_count?.text ?? '非公開',
     };
     
-    // ★★★ 修正点: 関連動画の取得ロジックを強化 ★★★
-    // watch_next_feed -> secondary_info -> related_videos -> player_overlays (End Screen) の順で探す
     let rawRelated = data.watch_next_feed || [];
-    
-    if (!rawRelated.length) {
-        rawRelated = data.secondary_info?.watch_next_feed || [];
-    }
-
-    if (!rawRelated.length) {
-        rawRelated = data.related_videos || [];
-    }
-    
+    if (!rawRelated.length) rawRelated = data.secondary_info?.watch_next_feed || [];
+    if (!rawRelated.length) rawRelated = data.related_videos || [];
     if (!rawRelated.length) {
         const overlays = data.player_overlays || data.playerOverlays;
         if (overlays) {
@@ -165,8 +185,6 @@ export async function getVideoDetails(videoId: string): Promise<VideoDetails> {
         }
     }
 
-    // マッピングしつつ、動画IDが11桁のもの（通常の動画）だけにフィルタリング
-    // エンドスクリーンにはプレイリストなどが含まれる場合があるため
     const relatedVideos = rawRelated
         .map(mapYoutubeiVideoToVideo)
         .filter((v): v is Video => v !== null && v.id.length === 11);

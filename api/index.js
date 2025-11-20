@@ -19,87 +19,80 @@ app.get('/api/video', async (req, res) => {
 
     const info = await youtube.getInfo(id);
 
-    // 関連動画を集約するための配列
-    // 初期ロード分の動画を追加
-    let relatedVideos = [];
+    // 関連動画を最大50件取得するロジック
+    let allCandidates = [];
     
-    // watch_next_feedがメインの関連動画ソース
-    if (info.watch_next_feed && Array.isArray(info.watch_next_feed)) {
-        relatedVideos.push(...info.watch_next_feed);
-    }
-    // secondary_infoにも含まれる場合がある
-    if (info.secondary_info?.watch_next_feed && Array.isArray(info.secondary_info.watch_next_feed)) {
-        relatedVideos.push(...info.secondary_info.watch_next_feed);
-    }
-
-    // 重複排除用のセット
-    const seenIds = new Set();
-    // 初期データの重複排除とID保存
-    relatedVideos = relatedVideos.filter(v => {
-        const vid = v.id || v.videoId;
-        if (vid && !seenIds.has(vid)) {
-            seenIds.add(vid);
-            return true;
+    const addCandidates = (source) => {
+        if (Array.isArray(source)) {
+            allCandidates.push(...source);
         }
-        return false;
-    });
+    };
 
-    // 50件になるまでContinuation（次のページの読み込み）を実行
+    addCandidates(info.watch_next_feed);
+    addCandidates(info.related_videos);
+    if (info.secondary_info) {
+        addCandidates(info.secondary_info.watch_next_feed);
+    }
+    addCandidates(info.related);
+
+    const overlays = info.player_overlays || info.playerOverlays;
+    if (overlays) {
+        const endScreen = overlays.end_screen || overlays.endScreen;
+        if (endScreen && Array.isArray(endScreen.results)) {
+            addCandidates(endScreen.results);
+        }
+    }
+
+    const relatedVideos = [];
+    const seenIds = new Set();
     const MAX_VIDEOS = 50;
-    let currentInfo = info;
-    let continuationCount = 0;
 
+    for (const video of allCandidates) {
+        if (relatedVideos.length >= MAX_VIDEOS) break;
+        if (!video) continue;
+        const videoId = video.id || video.videoId;
+        if (typeof videoId === 'string' && videoId.length === 11 && !seenIds.has(videoId)) {
+            seenIds.add(videoId);
+            relatedVideos.push(video);
+        }
+    }
+
+    let continuationCount = 0;
     while (relatedVideos.length < MAX_VIDEOS && continuationCount < 5) {
         try {
-            // getWatchNextContinuationで次のバッチを取得
-            const nextInfo = await currentInfo.getWatchNextContinuation();
-            
-            if (!nextInfo) break;
-            currentInfo = nextInfo; // 次のループのために参照を更新
-
-            const newItems = nextInfo.watch_next_feed || [];
-            if (newItems.length === 0) break;
-
-            let addedCount = 0;
-            for (const item of newItems) {
-                if (relatedVideos.length >= MAX_VIDEOS) break;
-
-                const vid = item.id || item.videoId;
-                // IDがあり、かつ未登録のものだけ追加
-                // 動画以外の要素（プレイリストカードなど）が混ざる場合があるので、タイトルかIDがあるものを簡易チェック
-                if (vid && !seenIds.has(vid) && (item.type === 'CompactVideo' || item.type === 'Video' || item.title)) {
-                    seenIds.add(vid);
-                    relatedVideos.push(item);
-                    addedCount++;
+            if (typeof info.getWatchNextContinuation === 'function') {
+                const nextInfo = await info.getWatchNextContinuation();
+                if (nextInfo && Array.isArray(nextInfo.watch_next_feed)) {
+                    let addedCount = 0;
+                    for (const video of nextInfo.watch_next_feed) {
+                        if (relatedVideos.length >= MAX_VIDEOS) break;
+                        const videoId = video.id || video.videoId;
+                        if (typeof videoId === 'string' && videoId.length === 11 && !seenIds.has(videoId)) {
+                            seenIds.add(videoId);
+                            relatedVideos.push(video);
+                            addedCount++;
+                        }
+                    }
+                    if (addedCount === 0) break;
+                } else {
+                    break; 
                 }
+            } else {
+                break; 
             }
-            
-            // 新しい動画が一つも追加されなかったら終了（無限ループ防止）
-            if (addedCount === 0) break;
-
         } catch (e) {
-            // Continuationがない、またはエラーの場合はループを抜ける
-            // console.log('Continuation fetch ended:', e.message);
+            console.log('Failed to fetch continuation:', e.message);
             break;
         }
         continuationCount++;
     }
 
-    // 重要: youtubei.jsのオブジェクトはクラスインスタンスであり、
-    // res.json(info)でシリアライズする際に、手動で代入したプロパティ(info.watch_next_feed = ...)が
-    // 無視される場合があるため、一度プレーンなJSONオブジェクトに変換してからデータを上書きする。
-    const responseObj = JSON.parse(JSON.stringify(info));
-    
-    // 集約した動画リストで上書き
-    responseObj.watch_next_feed = relatedVideos;
-    
-    // フロントエンドが迷わないように、他の関連動画ソースは空にする
-    if (responseObj.secondary_info) {
-        responseObj.secondary_info.watch_next_feed = [];
-    }
-    responseObj.related_videos = [];
+    info.watch_next_feed = relatedVideos;
+    if (info.secondary_info) info.secondary_info.watch_next_feed = [];
+    info.related_videos = [];
+    info.related = [];
 
-    res.status(200).json(responseObj);
+    res.status(200).json(info);
     
   } catch (err) {
     console.error('Error in /api/video:', err);
@@ -107,21 +100,42 @@ app.get('/api/video', async (req, res) => {
   }
 });
 
+// 検索 API (/api/search) - カテゴリ分け対応
 app.get('/api/search', async (req, res) => {
   try {
     const youtube = await Innertube.create({ lang: "ja", location: "JP" });
-    const { q: query, limit = '50' } = req.query;
+    const { q: query } = req.query;
     if (!query) return res.status(400).json({ error: "Missing search query" });
-    const limitNumber = parseInt(limit);
-    let search = await youtube.search(query, { type: "video" });
-    let videos = search.videos || [];
-    while (videos.length < limitNumber && search.has_continuation) {
-        search = await search.getContinuation();
-        videos = videos.concat(search.videos);
-    }
-    res.status(200).json(videos.slice(0, limitNumber));
-  } catch (err) { console.error('Error in /api/search:', err); res.status(500).json({ error: err.message }); }
+
+    const search = await youtube.search(query);
+    
+    // youtubei.js の search 結果は getter で各タイプを取得可能
+    // ただしバージョンによって挙動が違うため、念のため安全に取得する
+    
+    const videos = search.videos || [];
+    const shorts = search.shorts || [];
+    const channels = search.channels || [];
+    const playlists = search.playlists || [];
+
+    // 一部の動画を追加取得（ページネーションは動画メインで行うが、今回は初回ロードでカテゴリを分ける）
+    // 必要であればここで search.getContinuation() を呼んで動画を増やすことも可能だが、
+    // UX向上のため、まずは各カテゴリの初期結果を返す
+
+    res.status(200).json({
+        videos,
+        shorts,
+        channels,
+        playlists
+    });
+  } catch (err) { 
+      console.error('Error in /api/search:', err); 
+      res.status(500).json({ error: err.message }); 
+  }
 });
+
+// -------------------------------------------------------------------
+// その他のAPI
+// -------------------------------------------------------------------
 app.get('/api/comments', async (req, res) => {
   try {
     const youtube = await Innertube.create({ lang: "ja", location: "JP" });
