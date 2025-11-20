@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import VideoGrid from '../components/VideoGrid';
+import ShortsShelf from '../components/ShortsShelf';
 import { getRecommendedVideos } from '../utils/api';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { useSearchHistory } from '../contexts/SearchHistoryContext';
@@ -9,10 +10,37 @@ import { usePreference } from '../contexts/PreferenceContext';
 import { getDeeplyAnalyzedRecommendations } from '../utils/recommendation';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import type { Video } from '../types';
-import { SearchIcon, ImportExportIcon, SaveIcon, DownloadIcon } from '../components/icons/Icons';
+import { SearchIcon, SaveIcon, DownloadIcon } from '../components/icons/Icons';
+import { v4 as uuidv4 } from 'uuid';
+
+// Helper to parse duration string to seconds
+const parseDuration = (iso: string, text: string): number => {
+    if (iso) {
+        const matches = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        if (matches) {
+            const h = parseInt(matches[1] || '0', 10);
+            const m = parseInt(matches[2] || '0', 10);
+            const s = parseInt(matches[3] || '0', 10);
+            return h * 3600 + m * 60 + s;
+        }
+    }
+    if (text) {
+         const parts = text.split(':').map(p => parseInt(p, 10));
+         if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+         if (parts.length === 2) return parts[0] * 60 + parts[1];
+         if (parts.length === 1) return parts[0];
+    }
+    return 0;
+}
+
+interface HomeSection {
+    id: string;
+    type: 'grid' | 'shorts';
+    items: Video[];
+}
 
 const HomePage: React.FC = () => {
-    const [recommendedVideos, setRecommendedVideos] = useState<Video[]>([]);
+    const [sections, setSections] = useState<HomeSection[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [page, setPage] = useState(1);
@@ -26,7 +54,6 @@ const HomePage: React.FC = () => {
 
     // ユーザーが「新規（データなし）」かどうかを判定
     const isNewUser = useMemo(() => {
-        // デフォルトで1つのチャンネル(Xerox)が登録されているため、1より大きい場合を「ユーザーが登録した」とみなす
         const hasSubscriptions = subscribedChannels.length > 1;
         const hasSearchHistory = searchHistory.length > 0;
         const hasWatchHistory = watchHistory.length > 0;
@@ -44,7 +71,7 @@ const HomePage: React.FC = () => {
         }
         
         try {
-            let newVideos: Video[] = [];
+            let fetchedVideos: Video[] = [];
 
             // 深い分析に基づくレコメンデーションを取得
             const analyzedVideos = await getDeeplyAnalyzedRecommendations({
@@ -56,22 +83,63 @@ const HomePage: React.FC = () => {
                 page: pageNum
             });
 
-            newVideos = [...analyzedVideos];
+            fetchedVideos = [...analyzedVideos];
 
             // フォールバック: 分析結果が少ない場合のみ急上昇を取得（初回のみ）
-            if (newVideos.length < 10 && isInitial) {
+            if (fetchedVideos.length < 10 && isInitial) {
                 try {
                     const { videos: trendingVideos } = await getRecommendedVideos();
-                    newVideos = [...newVideos, ...trendingVideos];
+                    fetchedVideos = [...fetchedVideos, ...trendingVideos];
                 } catch (trendingError) {
                     console.warn("Failed to load trending videos", trendingError);
                 }
             }
             
-            setRecommendedVideos(prev => {
-                const existingIds = new Set(prev.map(v => v.id));
-                const uniqueNewVideos = newVideos.filter(v => !existingIds.has(v.id));
-                return isInitial ? uniqueNewVideos : [...prev, ...uniqueNewVideos];
+            // Separate Shorts (<= 60s) vs Regular Videos for this batch
+            const nextVideos: Video[] = [];
+            const nextShorts: Video[] = [];
+
+            fetchedVideos.forEach(v => {
+                const seconds = parseDuration(v.isoDuration, v.duration);
+                if (seconds > 0 && seconds <= 60) {
+                    nextShorts.push(v);
+                } else {
+                    nextVideos.push(v);
+                }
+            });
+
+            setSections(prev => {
+                const currentSections = isInitial ? [] : prev;
+                
+                // 重複排除用のIDセット作成
+                const existingIds = new Set<string>();
+                currentSections.forEach(s => s.items.forEach(v => existingIds.add(v.id)));
+
+                // このバッチ内の新しい動画のみ抽出
+                const uniqueNewShorts = nextShorts.filter(v => !existingIds.has(v.id));
+                const uniqueNewVideos = nextVideos.filter(v => !existingIds.has(v.id));
+
+                const newSections: HomeSection[] = [];
+
+                // Shortsがあればセクション追加
+                if (uniqueNewShorts.length > 0) {
+                    newSections.push({
+                        id: uuidv4(),
+                        type: 'shorts',
+                        items: uniqueNewShorts
+                    });
+                }
+
+                // 通常動画があればセクション追加
+                if (uniqueNewVideos.length > 0) {
+                    newSections.push({
+                        id: uuidv4(),
+                        type: 'grid',
+                        items: uniqueNewVideos
+                    });
+                }
+
+                return [...currentSections, ...newSections];
             });
 
         } catch (err: any) {
@@ -87,16 +155,15 @@ const HomePage: React.FC = () => {
 
     useEffect(() => {
         setPage(1);
-        setRecommendedVideos([]);
+        setSections([]);
         setError(null);
         
-        // データが何もない新規ユーザーの場合は、APIリクエストを行わずにガイドを表示する
         if (isNewUser) {
             setIsLoading(false);
         } else {
             loadRecommendations(1);
         }
-    }, [isNewUser, preferredGenres, preferredChannels]);
+    }, [isNewUser, preferredGenres, preferredChannels, loadRecommendations]);
 
     const loadMore = () => {
         if (!isFetchingMore && !isLoading && !isNewUser) {
@@ -120,7 +187,7 @@ const HomePage: React.FC = () => {
     };
 
     // 新規ユーザー、または動画がない場合のガイド表示
-    if ((isNewUser || (recommendedVideos.length === 0 && !isLoading))) {
+    if ((isNewUser || (sections.length === 0 && !isLoading))) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 animate-fade-in">
                 <div className="bg-yt-light dark:bg-yt-spec-10 p-6 rounded-full mb-6">
@@ -164,9 +231,27 @@ const HomePage: React.FC = () => {
     return (
         <div className="space-y-8">
             {error && <div className="text-red-500 text-center mb-4">{error}</div>}
-            <VideoGrid videos={recommendedVideos} isLoading={isLoading} />
             
-            {!isLoading && recommendedVideos.length > 0 && (
+            {sections.map((section, index) => (
+                <div key={section.id}>
+                    {section.type === 'shorts' ? (
+                         <div className="mb-2">
+                            {/* 2つ目以降のセクションなら区切り線を入れる */}
+                            {index > 0 && <hr className="border-yt-spec-light-20 dark:border-yt-spec-20 mb-6" />}
+                            <ShortsShelf shorts={section.items} isLoading={false} />
+                            <hr className="border-yt-spec-light-20 dark:border-yt-spec-20 mt-6" />
+                        </div>
+                    ) : (
+                        <VideoGrid videos={section.items} isLoading={false} />
+                    )}
+                </div>
+            ))}
+            
+            {isLoading && sections.length === 0 && (
+                 <VideoGrid videos={[]} isLoading={true} />
+            )}
+
+            {!isLoading && sections.length > 0 && (
                 <div ref={lastElementRef} className="h-20 flex justify-center items-center">
                     {isFetchingMore && <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-yt-blue"></div>}
                 </div>
