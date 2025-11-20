@@ -256,11 +256,13 @@ const VideoPlayerPage: React.FC = () => {
                                 </button>
                             </div>
 
-                            <button className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 px-3 sm:px-4 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap gap-2 flex-shrink-0">
-                                <ShareIcon />
-                                <span className="text-sm font-semibold hidden sm:inline">共有</span>
+                            <button 
+                                onClick={() => setIsPlaylistModalOpen(true)} 
+                                className="flex items-center justify-center bg-yt-light dark:bg-[#272727] rounded-full w-9 h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0"
+                            >
+                                <SaveIcon />
                             </button>
-                            
+
                             <button className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 px-3 sm:px-4 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap gap-2 flex-shrink-0">
                                 <DownloadIcon />
                                 <span className="text-sm font-semibold hidden sm:inline">オフライン</span>
@@ -270,11 +272,9 @@ const VideoPlayerPage: React.FC = () => {
                                 <ThanksIcon />
                             </button>
 
-                            <button 
-                                onClick={() => setIsPlaylistModalOpen(true)} 
-                                className="flex items-center justify-center bg-yt-light dark:bg-[#272727] rounded-full w-9 h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0"
-                            >
-                                <SaveIcon />
+                            <button className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 px-3 sm:px-4 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap gap-2 flex-shrink-0">
+                                <ShareIcon />
+                                <span className="text-sm font-semibold hidden sm:inline">共有</span>
                             </button>
 
                             <button className="flex items-center justify-center bg-yt-light dark:bg-[#272727] rounded-full w-9 h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0">

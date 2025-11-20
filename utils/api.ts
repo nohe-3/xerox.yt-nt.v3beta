@@ -105,10 +105,21 @@ export const mapYoutubeiVideoToVideo = (item: any): Video | null => {
 
 const mapYoutubeiChannelToChannel = (item: any): Channel | null => {
     if(!item?.id) return null;
+    
+    // Get avatar URL from thumbnails array, with fallback
+    const thumbnails = item.thumbnails || item.author?.thumbnails || [];
+    let avatarUrl = '';
+    if (thumbnails.length > 0) {
+        // Use the highest resolution if available, or the first one
+        avatarUrl = thumbnails[0].url; 
+        // Clean up URL parameters if needed (sometimes helps with caching/loading)
+        if (avatarUrl) avatarUrl = avatarUrl.split('?')[0];
+    }
+
     return {
         id: item.id,
         name: item.name || item.author?.name || 'No Name',
-        avatarUrl: item.thumbnails?.[0]?.url || '',
+        avatarUrl: avatarUrl || 'https://www.gstatic.com/youtube/img/creator/avatar/default_64.svg', // Fallback image
         subscriberCount: item.subscriber_count?.text || item.video_count?.text || ''
     };
 }
