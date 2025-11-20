@@ -66,25 +66,37 @@ app.get('/api/video', async (req, res) => {
     }
 
     // もし数が足りなければ、Continuationを試みる（ライブラリがサポートしている場合）
-    if (relatedVideos.length < 20) {
+    // 50件になるまで、または最大5回までContinuationを取得する
+    let continuationCount = 0;
+    while (relatedVideos.length < MAX_VIDEOS && continuationCount < 5) {
         try {
             if (typeof info.getWatchNextContinuation === 'function') {
                 const nextInfo = await info.getWatchNextContinuation();
                 if (nextInfo && Array.isArray(nextInfo.watch_next_feed)) {
+                    let addedCount = 0;
                     for (const video of nextInfo.watch_next_feed) {
                         if (relatedVideos.length >= MAX_VIDEOS) break;
                         const videoId = video.id || video.videoId;
                         if (typeof videoId === 'string' && videoId.length === 11 && !seenIds.has(videoId)) {
                             seenIds.add(videoId);
                             relatedVideos.push(video);
+                            addedCount++;
                         }
                     }
+                    // 新しい動画が追加されなければループを抜ける
+                    if (addedCount === 0) break;
+                } else {
+                    break; // Continuationデータがない
                 }
+            } else {
+                break; // 関数が存在しない
             }
         } catch (e) {
-            // Continuationの取得失敗は無視して、ある分だけ返す
+            // Continuationの取得失敗はログに出してループを抜ける
             console.log('Failed to fetch continuation:', e.message);
+            break;
         }
+        continuationCount++;
     }
 
     // 結果を watch_next_feed に格納して返す
