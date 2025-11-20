@@ -143,10 +143,33 @@ export async function getVideoDetails(videoId: string): Promise<VideoDetails> {
         subscriberCount: secondary?.owner?.subscriber_count?.text ?? '非公開',
     };
     
-    // ★★★ 修正点: バックエンドから来た綺麗なリストをそのままマッピングする ★★★
-    const relatedVideos = (data.watch_next_feed || [])
+    // ★★★ 修正点: 関連動画の取得ロジックを強化 ★★★
+    // watch_next_feed -> secondary_info -> related_videos -> player_overlays (End Screen) の順で探す
+    let rawRelated = data.watch_next_feed || [];
+    
+    if (!rawRelated.length) {
+        rawRelated = data.secondary_info?.watch_next_feed || [];
+    }
+
+    if (!rawRelated.length) {
+        rawRelated = data.related_videos || [];
+    }
+    
+    if (!rawRelated.length) {
+        const overlays = data.player_overlays || data.playerOverlays;
+        if (overlays) {
+            const endScreen = overlays.end_screen || overlays.endScreen;
+            if (endScreen && Array.isArray(endScreen.results)) {
+                rawRelated = endScreen.results;
+            }
+        }
+    }
+
+    // マッピングしつつ、動画IDが11桁のもの（通常の動画）だけにフィルタリング
+    // エンドスクリーンにはプレイリストなどが含まれる場合があるため
+    const relatedVideos = rawRelated
         .map(mapYoutubeiVideoToVideo)
-        .filter((v): v is Video => v !== null);
+        .filter((v): v is Video => v !== null && v.id.length === 11);
 
     return {
         id: videoId,
