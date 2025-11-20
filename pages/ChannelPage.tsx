@@ -258,10 +258,6 @@ const ChannelPage: React.FC = () => {
                     <h1 className="text-2xl md:text-3xl font-bold mb-1 md:mb-2">{channelDetails.name}</h1>
                     <div className="text-yt-light-gray text-sm mb-3 flex flex-wrap justify-center md:justify-start gap-x-2">
                          <span>{channelDetails.handle}</span>
-                         <span>‧</span>
-                         <span>{channelDetails.subscriberCount}</span>
-                         <span>‧</span>
-                         <span>{channelDetails.videoCount} 本の動画</span>
                     </div>
                     <p className="text-yt-light-gray text-sm line-clamp-1 mb-3 max-w-2xl cursor-pointer mx-auto md:mx-0" onClick={() => alert(channelDetails.description)}>
                         {channelDetails.description}

@@ -71,50 +71,73 @@ const VideoPlayerPage: React.FC = () => {
     }, [currentPlaylist]);
 
     useEffect(() => {
+        let isMounted = true;
+
         const fetchVideoData = async () => {
             if (!videoId) return;
             
-            setIsLoading(true);
-            setError(null);
-            setVideoDetails(null);
-            setComments([]);
-            setRelatedVideos([]);
-            window.scrollTo(0, 0);
+            if (isMounted) {
+                setIsLoading(true);
+                setError(null);
+                setVideoDetails(null);
+                setComments([]);
+                setRelatedVideos([]);
+                window.scrollTo(0, 0);
+            }
+
+            // 1. Start fetching essential data
+            const detailsPromise = getVideoDetails(videoId);
+            const commentsPromise = getComments(videoId);
+            
+            // 2. Start fetching external related videos in background (as it is slow)
+            const externalRelatedPromise = getExternalRelatedVideos(videoId);
 
             try {
-                // Fetch details and comments
-                const detailsPromise = getVideoDetails(videoId);
-                const commentsPromise = getComments(videoId);
-                
-                // Fetch external related videos
-                const relatedPromise = getExternalRelatedVideos(videoId);
-                
-                const [details, commentsData, externalRelated] = await Promise.all([
+                // 3. Wait for essential data only
+                const [details, commentsData] = await Promise.all([
                     detailsPromise, 
-                    commentsPromise, 
-                    relatedPromise
+                    commentsPromise
                 ]);
                 
-                setVideoDetails(details);
-                setComments(commentsData);
+                if (isMounted) {
+                    setVideoDetails(details);
+                    setComments(commentsData);
+                    
+                    // Display internal related videos initially if available
+                    if (details.relatedVideos && details.relatedVideos.length > 0) {
+                        setRelatedVideos(details.relatedVideos);
+                    }
+
+                    addVideoToHistory(details);
+                    
+                    // Render the page content immediately without waiting for external related videos
+                    setIsLoading(false);
+                }
                 
-                // Ensure related videos are set correctly, prioritizing external API
-                if (externalRelated && externalRelated.length > 0) {
-                    setRelatedVideos(externalRelated);
-                } else if (details.relatedVideos && details.relatedVideos.length > 0) {
-                    setRelatedVideos(details.relatedVideos);
+                // 4. Wait for external related videos
+                try {
+                    const externalRelated = await externalRelatedPromise;
+                    if (isMounted && externalRelated && externalRelated.length > 0) {
+                        // Update related videos list with external data
+                        setRelatedVideos(externalRelated);
+                    }
+                } catch (extErr) {
+                    console.warn("Failed to fetch external related videos", extErr);
                 }
 
-                addVideoToHistory(details);
-
             } catch (err: any) {
-                setError(err.message || '動画の読み込みに失敗しました。');
-                console.error(err);
-            } finally {
-                setIsLoading(false);
+                if (isMounted) {
+                    setError(err.message || '動画の読み込みに失敗しました。');
+                    console.error(err);
+                    setIsLoading(false);
+                }
             }
         };
         fetchVideoData();
+
+        return () => {
+            isMounted = false;
+        };
     }, [videoId, addVideoToHistory]);
     
     const shuffledPlaylistVideos = useMemo(() => {
@@ -264,8 +287,8 @@ const VideoPlayerPage: React.FC = () => {
                             </button>
 
                             <button className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 px-3 sm:px-4 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap gap-2 flex-shrink-0">
-                                <DownloadIcon />
-                                <span className="text-sm font-semibold hidden sm:inline">オフライン</span>
+                                <ShareIcon />
+                                <span className="text-sm font-semibold hidden sm:inline">共有</span>
                             </button>
                             
                             <button className="flex items-center justify-center bg-yt-light dark:bg-[#272727] rounded-full w-9 h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0 hidden sm:flex">
@@ -273,8 +296,8 @@ const VideoPlayerPage: React.FC = () => {
                             </button>
 
                             <button className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 px-3 sm:px-4 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap gap-2 flex-shrink-0">
-                                <ShareIcon />
-                                <span className="text-sm font-semibold hidden sm:inline">共有</span>
+                                <DownloadIcon />
+                                <span className="text-sm font-semibold hidden sm:inline">オフライン</span>
                             </button>
 
                             <button className="flex items-center justify-center bg-yt-light dark:bg-[#272727] rounded-full w-9 h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0">
