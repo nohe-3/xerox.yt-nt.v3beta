@@ -89,11 +89,8 @@ const VideoPlayerPage: React.FC = () => {
             const detailsPromise = getVideoDetails(videoId);
             const commentsPromise = getComments(videoId);
             
-            // 2. Start fetching external related videos in background (as it is slow)
-            const externalRelatedPromise = getExternalRelatedVideos(videoId);
-
             try {
-                // 3. Wait for essential data only
+                // 2. Wait for essential data only (Fast load)
                 const [details, commentsData] = await Promise.all([
                     detailsPromise, 
                     commentsPromise
@@ -114,16 +111,15 @@ const VideoPlayerPage: React.FC = () => {
                     setIsLoading(false);
                 }
                 
-                // 4. Wait for external related videos
-                try {
-                    const externalRelated = await externalRelatedPromise;
+                // 3. Fetch external related videos in background (Slow load)
+                // We do NOT await this before setting isLoading(false)
+                getExternalRelatedVideos(videoId).then(externalRelated => {
                     if (isMounted && externalRelated && externalRelated.length > 0) {
-                        // Update related videos list with external data
                         setRelatedVideos(externalRelated);
                     }
-                } catch (extErr) {
+                }).catch(extErr => {
                     console.warn("Failed to fetch external related videos", extErr);
-                }
+                });
 
             } catch (err: any) {
                 if (isMounted) {
@@ -279,16 +275,17 @@ const VideoPlayerPage: React.FC = () => {
                                 </button>
                             </div>
 
+                            {/* Swapped Share and Save buttons per request */}
+                            <button className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 px-3 sm:px-4 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap gap-2 flex-shrink-0">
+                                <ShareIcon />
+                                <span className="text-sm font-semibold hidden sm:inline">共有</span>
+                            </button>
+
                             <button 
                                 onClick={() => setIsPlaylistModalOpen(true)} 
                                 className="flex items-center justify-center bg-yt-light dark:bg-[#272727] rounded-full w-9 h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0"
                             >
                                 <SaveIcon />
-                            </button>
-
-                            <button className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 px-3 sm:px-4 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap gap-2 flex-shrink-0">
-                                <ShareIcon />
-                                <span className="text-sm font-semibold hidden sm:inline">共有</span>
                             </button>
                             
                             <button className="flex items-center justify-center bg-yt-light dark:bg-[#272727] rounded-full w-9 h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0 hidden sm:flex">

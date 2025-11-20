@@ -106,20 +106,31 @@ export const mapYoutubeiVideoToVideo = (item: any): Video | null => {
 const mapYoutubeiChannelToChannel = (item: any): Channel | null => {
     if(!item?.id) return null;
     
-    // Get avatar URL from thumbnails array, with fallback
-    const thumbnails = item.thumbnails || item.author?.thumbnails || [];
+    // Robust avatar extraction
+    let thumbnails = item.thumbnails || item.author?.thumbnails || item.avatar || [];
+    
+    // Some API responses put the avatar directly in a 'thumbnail' property (singular)
+    if (!Array.isArray(thumbnails) && typeof thumbnails === 'object' && thumbnails.url) {
+        thumbnails = [thumbnails];
+    }
+
     let avatarUrl = '';
-    if (thumbnails.length > 0) {
-        // Use the highest resolution if available, or the first one
-        avatarUrl = thumbnails[0].url; 
-        // Clean up URL parameters if needed (sometimes helps with caching/loading)
+    if (Array.isArray(thumbnails) && thumbnails.length > 0) {
+        // Usually the last one is highest quality, but let's check
+        const bestThumb = thumbnails[0]; 
+        avatarUrl = bestThumb.url;
+        // Clean up URL parameters
         if (avatarUrl) avatarUrl = avatarUrl.split('?')[0];
+    }
+    
+    if (!avatarUrl) {
+        avatarUrl = 'https://www.gstatic.com/youtube/img/creator/avatar/default_64.svg';
     }
 
     return {
         id: item.id,
-        name: item.name || item.author?.name || 'No Name',
-        avatarUrl: avatarUrl || 'https://www.gstatic.com/youtube/img/creator/avatar/default_64.svg', // Fallback image
+        name: item.name || item.author?.name || item.title?.text || 'No Name',
+        avatarUrl: avatarUrl,
         subscriberCount: item.subscriber_count?.text || item.video_count?.text || ''
     };
 }
@@ -207,6 +218,13 @@ export async function getExternalRelatedVideos(videoId: string): Promise<Video[]
         const response = await fetch(`https://siawaseok.duckdns.org/api/video2/${videoId}`);
         if (!response.ok) return [];
         
+        // Check if the response is actually JSON before parsing
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+             // If it's not JSON (e.g. 404 page HTML), return empty safely
+             return [];
+        }
+
         const data = await response.json();
         
         // Handle various response structures (array, object with items, object with related_videos)
@@ -221,7 +239,7 @@ export async function getExternalRelatedVideos(videoId: string): Promise<Video[]
             return mapYoutubeiVideoToVideo(item);
         }).filter((v: any): v is Video => v !== null);
     } catch (e) {
-        console.error("Failed to fetch external related videos", e);
+        console.warn("Failed to fetch external related videos silently:", e);
         return [];
     }
 }

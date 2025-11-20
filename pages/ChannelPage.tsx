@@ -94,7 +94,6 @@ const ChannelPage: React.FC = () => {
                         channelAvatarUrl: channelDetails?.avatarUrl || v.channelAvatarUrl,
                         channelId: channelDetails?.id || v.channelId
                     }));
-                    // ページ1以外の場合は追加、それ以外は置き換え（API修正済）
                     setVideos(prev => pageToken && pageToken !== '1' ? [...prev, ...enrichedVideos] : enrichedVideos);
                     setVideosPageToken(vData.nextPageToken);
                     break;
@@ -102,7 +101,6 @@ const ChannelPage: React.FC = () => {
         } catch (err) {
             console.error(`Failed to load ${tab}`, err);
             if(tab === 'home') {
-                // ホームタブの読み込み失敗は静かに無視する（エラーメッセージをすぐ出さない）
                 console.warn("Home tab fetch failed.");
             } else {
                 setError(`[${tab}] タブの読み込みに失敗しました。`);
@@ -193,7 +191,7 @@ const ChannelPage: React.FC = () => {
                                 <h3 className="text-base md:text-lg font-bold mb-1 md:mb-2 line-clamp-2">{homeData.topVideo.title}</h3>
                             </Link>
                             
-                            {/* Channel Name (Added) */}
+                            {/* Channel Name */}
                             <div className="flex items-center mb-2">
                                 {channelDetails && (
                                     <Link to={`/channel/${channelDetails.id}`} className="text-black dark:text-white font-semibold hover:text-yt-icon text-sm">
@@ -258,6 +256,7 @@ const ChannelPage: React.FC = () => {
                     <h1 className="text-2xl md:text-3xl font-bold mb-1 md:mb-2">{channelDetails.name}</h1>
                     <div className="text-yt-light-gray text-sm mb-3 flex flex-wrap justify-center md:justify-start gap-x-2">
                          <span>{channelDetails.handle}</span>
+                         {/* Subscriber and Video count hidden per user request */}
                     </div>
                     <p className="text-yt-light-gray text-sm line-clamp-1 mb-3 max-w-2xl cursor-pointer mx-auto md:mx-0" onClick={() => alert(channelDetails.description)}>
                         {channelDetails.description}

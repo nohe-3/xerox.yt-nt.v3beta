@@ -4,6 +4,7 @@ import VideoGrid from '../components/VideoGrid';
 import { searchVideos, getChannelVideos, getRecommendedVideos } from '../utils/api';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { useSearchHistory } from '../contexts/SearchHistoryContext';
+import { useHistory } from '../contexts/HistoryContext';
 import type { Video } from '../types';
 
 const HomePage: React.FC = () => {
@@ -13,6 +14,7 @@ const HomePage: React.FC = () => {
 
     const { subscribedChannels } = useSubscription();
     const { searchHistory } = useSearchHistory();
+    const { history: watchHistory } = useHistory();
 
     const parseISODuration = (isoDuration: string): number => {
         if (!isoDuration) return 0;
@@ -38,14 +40,17 @@ const HomePage: React.FC = () => {
     const loadRecommended = useCallback(async () => {
         setIsLoadingRecommended(true);
         try {
-            // Increase fetch sources from user's context
-            const searchPromises = searchHistory.slice(0, 10).map(term => searchVideos(term).then(res => res.videos));
-            
-            // Fetch from subscribed channels and explicitly backfill channel info from our subscription list
-            // This ensures that even if the API returns "N/A" or missing avatars, we display the correct info.
-            const channelPromises = subscribedChannels.slice(0, 15).map(channel => 
+            // 1. Intent-based: Videos based on recent search terms (Limit 3 terms)
+            const searchPromises = searchHistory.slice(0, 3).map(term => 
+                searchVideos(term).then(res => res.videos.slice(0, 5))
+            );
+
+            // 2. Personalized: Videos from subscribed channels (Limit 5 channels)
+            // Explicitly populate channel info since API might miss it in partial feeds
+            const shuffledSubs = shuffleArray(subscribedChannels);
+            const channelPromises = shuffledSubs.slice(0, 5).map(channel => 
                 getChannelVideos(channel.id).then(res => 
-                    res.videos.slice(0, 10).map(video => ({
+                    res.videos.slice(0, 5).map(video => ({
                         ...video,
                         channelName: channel.name,
                         channelAvatarUrl: channel.avatarUrl,
@@ -53,18 +58,50 @@ const HomePage: React.FC = () => {
                     }))
                 )
             );
-
-            const results = await Promise.allSettled([...searchPromises, ...channelPromises]);
-            let personalizedVideos = results.flatMap(result => (result.status === 'fulfilled' && Array.isArray(result.value) ? result.value : []));
             
-            // Fallback to general recommendations if personalized feed is too small
-            if (personalizedVideos.length < 20) {
+            // 3. Contextual: Videos related to recently watched videos (Limit 3)
+            // We use the title of the last few watched videos to find similar content
+            const historyPromises = watchHistory.slice(0, 3).map(video => 
+                 searchVideos(video.title.replace(/[^a-zA-Z0-9\s\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf]/g, '')).then(res => res.videos.slice(0, 5))
+            );
+
+            // 4. Discovery: Trending/Popular videos (Baseline)
+            const trendingPromise = getRecommendedVideos();
+
+            // Execute all requests in parallel
+            const results = await Promise.allSettled([
+                trendingPromise,
+                ...searchPromises,
+                ...channelPromises,
+                ...historyPromises
+            ]);
+            
+            // Flatten results
+            let combinedVideos: Video[] = [];
+            results.forEach(result => {
+                if (result.status === 'fulfilled') {
+                    if (Array.isArray(result.value)) {
+                        combinedVideos.push(...result.value); // From search/history promises
+                    } else if (result.value && Array.isArray((result.value as any).videos)) {
+                        combinedVideos.push(...(result.value as any).videos); // From trendingPromise
+                    }
+                }
+            });
+
+            // Fallback if algo didn't return enough
+            if (combinedVideos.length < 10) {
                 const { videos: trendingVideos } = await getRecommendedVideos();
-                personalizedVideos = [...personalizedVideos, ...trendingVideos];
+                combinedVideos = [...combinedVideos, ...trendingVideos];
             }
             
-            const uniqueVideos = Array.from(new Map(personalizedVideos.map(v => [v.id, v])).values());
-            const regularVideos = uniqueVideos.filter(v => parseISODuration(v.isoDuration) > 60);
+            // Deduplicate by ID
+            const uniqueVideos = Array.from(new Map(combinedVideos.map(v => [v.id, v])).values());
+            
+            // Filter out very short clips if they aren't explicit shorts (heuristic > 60s)
+            const regularVideos = uniqueVideos.filter(v => {
+                 const duration = parseISODuration(v.isoDuration);
+                 return duration === 0 || duration > 60; // Keep if unknown duration or > 60s
+            });
 
             setRecommendedVideos(shuffleArray(regularVideos));
         } catch (err: any) {
@@ -73,7 +110,7 @@ const HomePage: React.FC = () => {
         } finally {
             setIsLoadingRecommended(false);
         }
-    }, [subscribedChannels, searchHistory]);
+    }, [subscribedChannels, searchHistory, watchHistory]);
 
 
     useEffect(() => {
