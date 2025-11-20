@@ -35,6 +35,11 @@ app.get('/api/video', async (req, res) => {
       initialRelated = info.secondary_info.watch_next_feed;
     }
     
+    // 追加: player_overlays内のエンドスクリーンから関連動画を取得 (Login Required時などの対策)
+    if (!initialRelated.length && info.player_overlays?.end_screen?.results) {
+      initialRelated = info.player_overlays.end_screen.results;
+    }
+    
     // 2. キューと処理済みIDセットの準備
     const queue = [...initialRelated]; 
     const seen = new Set();
@@ -44,6 +49,7 @@ app.get('/api/video', async (req, res) => {
       const video = queue.shift();
       
       // 動画アイテムとしての最小限の検証（IDが11桁の文字列であること）と重複チェック
+      // エンドスクリーンのプレイリスト等は除外される
       if (!video || typeof video.id !== 'string' || video.id.length !== 11 || seen.has(video.id)) {
         continue;
       }

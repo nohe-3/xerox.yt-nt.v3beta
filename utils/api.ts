@@ -85,7 +85,10 @@ const mapYoutubeiVideoToVideo = (item: any): Video | null => {
         channelName: item.author?.name ?? item.channel?.name ?? '不明なチャンネル',
         channelId: item.author?.id ?? item.channel?.id ?? '',
         channelAvatarUrl: item.author?.thumbnails?.[0]?.url ?? item.channel?.thumbnails?.[0]?.url ?? '',
-        views: item.view_count?.text ? `${formatJapaneseNumber(item.view_count.text)}回視聴` : '視聴回数不明',
+        // view_countがある場合は整形し、ない場合はshort_view_count（整形済みテキスト）を使用する
+        views: item.view_count?.text 
+            ? `${formatJapaneseNumber(item.view_count.text)}回視聴` 
+            : (item.short_view_count?.text ?? '視聴回数不明'),
         uploadedAt: formatJapaneseDate(item.published?.text ?? ''),
         descriptionSnippet: item.description_snippet?.text ?? '',
     };
