@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getChannelDetails, getChannelVideos, getChannelHome, mapHomeVideoToVideo } from '../utils/api';
+import { getChannelDetails, getChannelVideos, getChannelHome, mapHomeVideoToVideo, getPlayerConfig } from '../utils/api';
 import type { ChannelDetails, Video, Channel, ChannelHomeData, HomePlaylist } from '../types';
 import VideoGrid from '../components/VideoGrid';
 import VideoCard from '../components/VideoCard';
@@ -38,6 +38,7 @@ const ChannelPage: React.FC = () => {
     const [videosPageToken, setVideosPageToken] = useState<string | undefined>('1');
     const [isFetchingMore, setIsFetchingMore] = useState(false);
     const [isTabLoading, setIsTabLoading] = useState(false);
+    const [playerParams, setPlayerParams] = useState<string | null>(null);
     
     const { isSubscribed, subscribe, unsubscribe } = useSubscription();
 
@@ -50,8 +51,13 @@ const ChannelPage: React.FC = () => {
             setHomeData(null);
             setVideosPageToken('1');
             setActiveTab('home');
+            
+            const paramsPromise = getPlayerConfig();
+            const detailsPromise = getChannelDetails(channelId);
+            
             try {
-                const details = await getChannelDetails(channelId);
+                const [params, details] = await Promise.all([paramsPromise, detailsPromise]);
+                setPlayerParams(params);
                 setChannelDetails(details);
             } catch (err: any) {
                 setError(err.message || 'チャンネルデータの読み込みに失敗しました。');
@@ -168,10 +174,21 @@ const ChannelPage: React.FC = () => {
                 {/* Featured Video */}
                 {homeData.topVideo && (
                     <div className="flex flex-col md:flex-row gap-4 md:gap-6 border-b border-yt-spec-light-20 dark:border-yt-spec-20 pb-6">
-                         <div className="w-full md:w-[360px] lg:w-[420px] aspect-video rounded-xl overflow-hidden flex-shrink-0">
-                            <Link to={`/watch/${homeData.topVideo.videoId}`}>
-                                <img src={homeData.topVideo.thumbnail} alt={homeData.topVideo.title} className="w-full h-full object-cover" />
-                            </Link>
+                         <div className="w-full md:w-[360px] lg:w-[420px] aspect-video rounded-xl overflow-hidden flex-shrink-0 bg-yt-black">
+                            {playerParams ? (
+                                <iframe 
+                                    src={`https://www.youtubeeducation.com/embed/${homeData.topVideo.videoId}${playerParams}`}
+                                    title={homeData.topVideo.title}
+                                    frameBorder="0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                    className="w-full h-full"
+                                ></iframe>
+                            ) : (
+                                <Link to={`/watch/${homeData.topVideo.videoId}`}>
+                                    <img src={homeData.topVideo.thumbnail} alt={homeData.topVideo.title} className="w-full h-full object-cover" />
+                                </Link>
+                            )}
                         </div>
                         <div className="flex-1 py-1 md:py-2 min-w-0">
                             <Link to={`/watch/${homeData.topVideo.videoId}`}>
@@ -230,8 +247,6 @@ const ChannelPage: React.FC = () => {
                     <h1 className="text-2xl md:text-3xl font-bold mb-1 md:mb-2">{channelDetails.name}</h1>
                     <div className="text-yt-light-gray text-sm mb-3 flex flex-wrap justify-center md:justify-start gap-x-2">
                          <span>{channelDetails.handle}</span>
-                         <span>•</span>
-                         <span>{channelDetails.subscriberCount}</span>
                     </div>
                     <p className="text-yt-light-gray text-sm line-clamp-1 mb-3 max-w-2xl cursor-pointer mx-auto md:mx-0" onClick={() => alert(channelDetails.description)}>
                         {channelDetails.description}

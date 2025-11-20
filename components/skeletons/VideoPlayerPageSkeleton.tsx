@@ -17,7 +17,7 @@ const VideoPlayerPageSkeleton: React.FC = () => {
         <div className="flex flex-col lg:flex-row gap-6 max-w-[1280px] mx-auto pt-2 md:pt-6 px-4 md:px-6 justify-center animate-pulse">
             <div className="flex-1 min-w-0 max-w-full">
                 {/* Video Player Placeholder */}
-                <div className="aspect-video bg-yt-light dark:bg-yt-dark-gray rounded-xl"></div>
+                <div className="w-full aspect-video bg-yt-light dark:bg-yt-dark-gray rounded-xl shadow-lg"></div>
                 
                 <div className="">
                     <div className="h-7 bg-yt-light dark:bg-yt-dark-gray rounded w-3/4 mt-4"></div>
