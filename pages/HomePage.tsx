@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import VideoGrid from '../components/VideoGrid';
 import ShortsShelf from '../components/ShortsShelf';
@@ -46,12 +47,13 @@ const HomePage: React.FC = () => {
     const [aiMode, setAiMode] = useState(false);
 
     const seenIdsRef = useRef<Set<string>>(new Set());
+    const isAiAugmentedRef = useRef(false);
 
     const { subscribedChannels } = useSubscription();
     const { searchHistory } = useSearchHistory();
     const { history: watchHistory } = useHistory();
     const { preferredGenres, preferredChannels, ngKeywords, ngChannels, exportUserData, importUserData, useXrai } = usePreference();
-    const { getAiRecommendations, initializeEngine, isLoaded, isLoading: isAiLoading } = useAi();
+    const { getAiRecommendations, initializeEngine, isLoaded, isLoading: isAiLoading, discoveryVideoCache } = useAi();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Automatically initialize AI engine in background for standard recommendations
@@ -69,12 +71,86 @@ const HomePage: React.FC = () => {
         return !(hasSubscriptions || hasSearchHistory || hasWatchHistory || hasPreferences);
     }, [subscribedChannels, searchHistory, watchHistory, preferredGenres]);
 
+    // Logic to inject AI Discovery videos into the standard feed
+    const augmentFeedWithAi = useCallback(async () => {
+        if (isAiAugmentedRef.current || aiMode || feed.length === 0) return;
+        
+        // Double check to prevent multiple injections if state updates overlap
+        const hasAiContent = feed.some(v => v.isAiRecommended);
+        if (hasAiContent) {
+             isAiAugmentedRef.current = true;
+             return;
+        }
+
+        isAiAugmentedRef.current = true;
+
+        try {
+            let aiVideos: Video[] = [];
+
+            // Use cached videos if available (Prevents flickering on reload/nav)
+            if (discoveryVideoCache.current.length > 0) {
+                aiVideos = discoveryVideoCache.current;
+            } else {
+                const aiQueries = await getAiRecommendations();
+                if (aiQueries.length === 0) return;
+
+                // Pick one query to mix in
+                const query = aiQueries[Math.floor(Math.random() * aiQueries.length)];
+                const searchRes = await searchVideos(query, '1');
+                aiVideos = searchRes.videos.slice(0, 6).map(v => ({...v, isAiRecommended: true}));
+                
+                // Cache results
+                discoveryVideoCache.current = aiVideos;
+            }
+
+            if (aiVideos.length > 0) {
+                setFeed(currentFeed => {
+                    // Safety check inside setter
+                    if (currentFeed.some(v => v.isAiRecommended)) return currentFeed;
+
+                    const newFeed = [...currentFeed];
+                    // Insert 1 AI video roughly every 5-6 items
+                    aiVideos.forEach((v, i) => {
+                        const pos = 4 + (i * 5); 
+                        if (pos < newFeed.length) {
+                            newFeed.splice(pos, 0, v);
+                        } else {
+                            newFeed.push(v);
+                        }
+                    });
+                    
+                    // Re-deduplicate based on ID
+                    const seen = new Set<string>();
+                    const uniqueFeed: Video[] = [];
+                    for(const v of newFeed) {
+                        if(!seen.has(v.id)) {
+                            seen.add(v.id);
+                            uniqueFeed.push(v);
+                        }
+                    }
+                    return uniqueFeed;
+                });
+            }
+        } catch (e) {
+            console.warn("AI augmentation background task failed", e);
+        }
+    }, [getAiRecommendations, aiMode, feed, discoveryVideoCache]);
+
+    // Trigger AI Augmentation when engine becomes ready
+    useEffect(() => {
+        if (isLoaded && !isNewUser && !aiMode && feed.length > 0) {
+            augmentFeedWithAi();
+        }
+    }, [isLoaded, isNewUser, aiMode, feed.length, augmentFeedWithAi]);
+
+
     const loadRecommendations = useCallback(async (pageNum: number) => {
         if (aiMode) return;
 
         const isInitial = pageNum === 1;
         if (isInitial) {
             setIsLoading(true);
+            isAiAugmentedRef.current = false; // Reset AI augmentation flag on refresh
         } else {
             setIsFetchingMore(true);
         }
@@ -97,43 +173,6 @@ const HomePage: React.FC = () => {
                 }
                 rawVideos = await getLegacyRecommendations();
                 setHasNextPage(false);
-            }
-
-            // 2. AI Augmentation (WebLLM) - Discovery Injection
-            // If the engine is loaded, we fetch 1-2 semantic queries and mix them in.
-            // This runs in parallel to not slow down the main feed too much, or we await it if we want strong integration.
-            // For First Contentful Paint, we might skip this on page 1 if it's too slow, but since we want "AI included", we try.
-            if (isLoaded && !isNewUser) {
-                try {
-                    // Only fetch AI suggestions occasionally to save resources/API calls if needed
-                    if (pageNum === 1 || pageNum % 2 === 0) {
-                        const aiQueries = await getAiRecommendations();
-                        // Take top 1 query for this batch
-                        if (aiQueries.length > 0) {
-                            const query = aiQueries[Math.floor(Math.random() * aiQueries.length)];
-                            const searchRes = await searchVideos(query, '1');
-                            const aiVideos = searchRes.videos.slice(0, 5); // Take top 5 relevant videos
-                            
-                            // Interleave AI videos into rawVideos
-                            // Insert 1 AI video every 5 standard videos
-                            const mixed: Video[] = [];
-                            let aiIndex = 0;
-                            rawVideos.forEach((v, i) => {
-                                mixed.push(v);
-                                if ((i + 1) % 5 === 0 && aiIndex < aiVideos.length) {
-                                    mixed.push(aiVideos[aiIndex++]);
-                                }
-                            });
-                            // Add remaining AI videos if standard feed is short
-                            while (aiIndex < aiVideos.length) {
-                                mixed.push(aiVideos[aiIndex++]);
-                            }
-                            rawVideos = mixed;
-                        }
-                    }
-                } catch (e) {
-                    console.warn("AI augmentation failed", e);
-                }
             }
 
             const newVideos: Video[] = [];
@@ -170,7 +209,7 @@ const HomePage: React.FC = () => {
             setIsLoading(false);
             setIsFetchingMore(false);
         }
-    }, [subscribedChannels, searchHistory, watchHistory, preferredGenres, preferredChannels, ngKeywords, ngChannels, useXrai, aiMode, isLoaded, isNewUser, getAiRecommendations]);
+    }, [subscribedChannels, searchHistory, watchHistory, preferredGenres, preferredChannels, ngKeywords, ngChannels, useXrai, aiMode]);
 
     useEffect(() => {
         if (!aiMode) {
@@ -310,13 +349,15 @@ const HomePage: React.FC = () => {
 
             {error && <div className="text-red-500 text-center mb-4">{error}</div>}
             
-            {/* Added mt-4 and padding to prevent overlap with sticky header */}
+            {/* AI Mode Header */}
             {aiMode && !isLoading && feed.length > 0 && (
-                <div className="mb-6 px-2 mt-4 pt-2">
+                 <div className="mb-8 px-4 mt-8 pt-4 bg-yt-light/30 dark:bg-white/5 rounded-xl border border-yt-spec-light-10 dark:border-yt-spec-10 backdrop-blur-sm">
                     <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-blue-500">
-                        AIが選んだあなたへのおすすめ
+                        AIキュレーターの選定
                     </h2>
-                    <p className="text-sm text-yt-light-gray mt-1">ローカルLLMがあなたの興味に基づいて生成したプレイリストです</p>
+                    <p className="text-sm text-yt-light-gray mt-1 pb-2">
+                        ローカルLLMがあなたの興味に基づいて生成した、新しい発見のためのプレイリストです。
+                    </p>
                 </div>
             )}
             

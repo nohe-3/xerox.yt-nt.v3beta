@@ -12,6 +12,7 @@ export interface Video {
   uploadedAt: string;
   descriptionSnippet?: string;
   collaborators?: Channel[]; // 複数チャンネル対応
+  isAiRecommended?: boolean; // AIレコメンド識別用
 }
 
 export interface ChannelBadge {

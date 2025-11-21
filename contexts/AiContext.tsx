@@ -1,8 +1,10 @@
-import React, { createContext, useState, useContext, ReactNode, useRef } from 'react';
+
+import React, { createContext, useState, useContext, ReactNode, useRef, useMemo, useCallback } from 'react';
 import * as webllm from "@mlc-ai/web-llm";
 import { useHistory } from './HistoryContext';
 import { useSubscription } from './SubscriptionContext';
 import { buildUserProfile, inferTopInterests } from '../utils/xrai';
+import type { Video } from '../types';
 
 // Use Phi-3.5-mini-instruct for high performance (12B equivalent reasoning) with low VRAM usage
 const SELECTED_MODEL = "Phi-3.5-mini-instruct-q4f16_1-MLC"; 
@@ -13,6 +15,7 @@ interface AiContextType {
   loadProgress: string;
   initializeEngine: () => Promise<void>;
   getAiRecommendations: () => Promise<string[]>;
+  discoveryVideoCache: React.MutableRefObject<Video[]>;
 }
 
 const AiContext = createContext<AiContextType | undefined>(undefined);
@@ -23,10 +26,12 @@ export const AiProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [loadProgress, setLoadProgress] = useState('');
   
   const engine = useRef<webllm.MLCEngine | null>(null);
+  const discoveryVideoCache = useRef<Video[]>([]); // Cache for discovered videos to prevent reload flickering
+
   const { history } = useHistory();
   const { subscribedChannels } = useSubscription();
 
-  const initializeEngine = async () => {
+  const initializeEngine = useCallback(async () => {
     if (engine.current || isLoading) return;
     
     setIsLoading(true);
@@ -60,10 +65,10 @@ export const AiProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isLoading]);
   
   // Generates search queries based on user profile (Analysis Only)
-  const getAiRecommendations = async (): Promise<string[]> => {
+  const getAiRecommendations = useCallback(async (): Promise<string[]> => {
     if (!engine.current) {
         await initializeEngine();
     }
@@ -79,22 +84,22 @@ export const AiProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     
     // Prompt engineering for "YouTube-like" discovery (New Channels, Adjacent Genres)
     const prompt = `
-    You are a YouTube recommendation algorithm.
+    You are a YouTube recommendation algorithm used for CONTENT DISCOVERY.
     User's core interests: [${interests.join(', ')}].
     Recently watched: ["${recentTitles}"].
 
     Task: Generate 5 specific YouTube search queries to help the user discover NEW channels and RELATED genres they haven't seen yet.
     Rules:
-    1. Focus on adjacent niches (e.g., if "Minecraft", suggest "Terraria" or "Indie Sandbox").
-    2. Suggest topics for "Deep Dives" or "Video Essays" related to their interests.
-    3. Do not use generic terms like "funny video". Be specific.
+    1. Focus on ADJACENT niches (e.g., if "Minecraft", suggest "Terraria" or "Indie Sandbox").
+    2. Do NOT suggest what they already watch. Suggest "Fresh" or "Rising" topics.
+    3. Include terms like "Video Essay", "Review", "Documentary", or specific genres.
     4. Output ONLY the 5 queries, one per line. No numbering.
     `;
 
     try {
         const reply = await engine.current.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
-            temperature: 0.7, // Slightly lower temperature for more focused results
+            temperature: 0.8, // Higher temperature for more diversity
             max_tokens: 150,
         });
         
@@ -109,10 +114,19 @@ export const AiProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         console.error("Recommendation generation failed", e);
         return interests.slice(0, 5);
     }
-  };
+  }, [history, subscribedChannels, initializeEngine]);
+
+  const value = useMemo(() => ({
+    isLoaded, 
+    isLoading, 
+    loadProgress, 
+    initializeEngine, 
+    getAiRecommendations,
+    discoveryVideoCache
+  }), [isLoaded, isLoading, loadProgress, initializeEngine, getAiRecommendations]);
 
   return (
-    <AiContext.Provider value={{ isLoaded, isLoading, loadProgress, initializeEngine, getAiRecommendations }}>
+    <AiContext.Provider value={value}>
       {children}
     </AiContext.Provider>
   );
