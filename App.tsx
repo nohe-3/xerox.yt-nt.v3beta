@@ -14,7 +14,6 @@ import HistoryPage from './pages/HistoryPage';
 import VideoPlayerPage from './pages/VideoPlayerPage';
 import { useTheme } from './hooks/useTheme';
 import { AiProvider } from './contexts/AiContext';
-import AiChatOverlay from './components/AiChatOverlay';
 
 const { Routes, Route, useLocation } = ReactRouterDOM;
 
@@ -25,7 +24,6 @@ const App: React.FC = () => {
   const isShortsPage = location.pathname === '/shorts';
 
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(!isPlayerPage);
-  const [isChatOpen, setIsChatOpen] = useState(false);
 
   useEffect(() => {
     if (isPlayerPage) {
@@ -62,7 +60,6 @@ const App: React.FC = () => {
             toggleSidebar={toggleSidebar} 
             theme={theme}
             toggleTheme={toggleTheme}
-            onChatToggle={() => setIsChatOpen(prev => !prev)}
         />
         <div className="flex">
             {shouldShowSidebar() && <Sidebar isOpen={isSidebarOpen} />}
@@ -82,7 +79,6 @@ const App: React.FC = () => {
             </main>
         </div>
         <BottomNavigation />
-        <AiChatOverlay isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
         </div>
     </AiProvider>
   );

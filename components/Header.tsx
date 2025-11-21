@@ -13,10 +13,9 @@ interface HeaderProps {
   toggleSidebar: () => void;
   theme: 'light' | 'dark';
   toggleTheme: () => void;
-  onChatToggle?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ toggleSidebar, theme, toggleTheme, onChatToggle }) => {
+const Header: React.FC<HeaderProps> = ({ toggleSidebar, theme, toggleTheme }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -137,11 +136,6 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, theme, toggleTheme, onCh
 
       {/* Right Section */}
       <div className="flex items-center space-x-0 sm:space-x-2 md:space-x-4">
-        {onChatToggle && (
-            <button onClick={onChatToggle} className="p-2 rounded-full hover:bg-yt-spec-light-10 dark:hover:bg-yt-spec-10 active:scale-95 transform transition-transform duration-150 text-2xl" title="AIアシスタント">
-                ✨
-            </button>
-        )}
         <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-yt-spec-light-10 dark:hover:bg-yt-spec-10 active:scale-95 transform transition-transform duration-150 hidden sm:block" aria-label="テーマの切り替え">
           {theme === 'light' ? <MoonIcon /> : <LightbulbIcon />}
         </button>

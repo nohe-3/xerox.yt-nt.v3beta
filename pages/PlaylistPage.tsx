@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 import { usePlaylist } from '../contexts/PlaylistContext';
 import { getVideosByIds } from '../utils/api';
 import type { Video } from '../types';
-import { EditIcon, TrashIcon, PlayIcon, ShuffleIcon, RepeatIcon, DragHandleIcon, MoreIconHorizontal } from '../components/icons/Icons';
+import { EditIcon, TrashIcon, PlayIcon, ShuffleIcon, RepeatIcon, DragHandleIcon, MoreIconHorizontal, CheckIcon } from '../components/icons/Icons';
 
 const { useParams, useNavigate, Link } = ReactRouterDOM;
 
@@ -33,6 +34,7 @@ const PlaylistPage: React.FC = () => {
             if (playlist.videoIds.length > 0) {
                 const fetchedVideos = await getVideosByIds(playlist.videoIds);
                 const videoMap = new Map(fetchedVideos.map(v => [v.id, v]));
+                // Preserve order of IDs
                 setVideos(playlist.videoIds.map(id => videoMap.get(id)).filter((v): v is Video => !!v));
             } else {
                 setVideos([]);
@@ -43,7 +45,7 @@ const PlaylistPage: React.FC = () => {
     }, [playlist]);
 
     if (!playlist) {
-        return <div className="text-center p-8">プレイリストが見つかりません。</div>;
+        return <div className="text-center p-8 text-white">プレイリストが見つかりません。</div>;
     }
     
     const handleNameSave = () => {
@@ -70,105 +72,182 @@ const PlaylistPage: React.FC = () => {
     };
     
     const firstVideoId = videos.length > 0 ? videos[0].id : null;
+    const coverImage = videos.length > 0 ? videos[0].thumbnailUrl : '';
 
     return (
-        <div className="flex flex-col md:flex-row gap-8">
-            <div className="w-full md:w-1/3 md:max-w-sm flex-shrink-0 bg-gradient-to-b from-yt-gray/50 to-yt-dark-gray p-6 rounded-2xl self-start sticky top-20">
-                {videos.length > 0 && firstVideoId ? (
-                    <div className="relative group/playall mb-4">
-                        <Link to={`/watch/${firstVideoId}?list=${playlist.id}`}>
-                            <img src={videos[0].thumbnailUrl} alt={playlist.name} className="w-full aspect-video rounded-lg" />
-                             <div className="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center gap-2 opacity-0 group-hover/playall:opacity-100 transition-opacity cursor-pointer rounded-lg">
-                                <PlayIcon className="fill-current text-white h-8 w-8" />
-                                <span className="text-white font-semibold text-xl">すべて再生</span>
+        <div className="min-h-screen bg-yt-black text-white">
+            {/* Background Gradient Blur */}
+            {coverImage && (
+                <div 
+                    className="fixed inset-0 z-0 opacity-30 pointer-events-none"
+                    style={{
+                        backgroundImage: `url(${coverImage})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        filter: 'blur(100px)',
+                        maskImage: 'linear-gradient(to bottom, black 0%, transparent 100%)'
+                    }}
+                />
+            )}
+
+            <div className="relative z-10 flex flex-col lg:flex-row gap-8 p-6 max-w-[1600px] mx-auto">
+                {/* Left Sidebar (Info) */}
+                <div className="lg:w-[360px] flex-shrink-0">
+                    <div className="lg:sticky lg:top-24 flex flex-col gap-6 p-6 rounded-3xl bg-gradient-to-b from-white/10 to-black/40 backdrop-blur-md border border-white/10 shadow-2xl">
+                        {/* Cover Image */}
+                        <div className="relative group aspect-video md:aspect-square rounded-xl overflow-hidden shadow-lg bg-yt-dark-gray">
+                            {coverImage ? (
+                                <img src={coverImage} alt={playlist.name} className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-yt-light-gray">No Videos</div>
+                            )}
+                             {firstVideoId && (
+                                <Link 
+                                    to={`/watch/${firstVideoId}?list=${playlist.id}`}
+                                    className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                                >
+                                    <div className="flex items-center gap-2 text-white font-semibold">
+                                        <PlayIcon /> すべて再生
+                                    </div>
+                                </Link>
+                             )}
+                        </div>
+
+                        {/* Metadata */}
+                        <div className="flex flex-col gap-2">
+                            {isEditingName ? (
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={playlistName}
+                                        onChange={(e) => setPlaylistName(e.target.value)}
+                                        className="w-full bg-transparent border-b-2 border-white text-2xl font-bold outline-none pb-1"
+                                        autoFocus
+                                        onBlur={handleNameSave}
+                                        onKeyDown={e => e.key === 'Enter' && handleNameSave()}
+                                    />
+                                    <button onClick={handleNameSave} className="p-2"><CheckIcon /></button>
+                                </div>
+                            ) : (
+                                <h1 
+                                    className="text-3xl font-bold cursor-pointer hover:text-gray-200 line-clamp-2"
+                                    onClick={() => setIsEditingName(true)}
+                                    title="クリックして編集"
+                                >
+                                    {playlist.name}
+                                </h1>
+                            )}
+                            
+                            <div className="flex flex-col gap-1">
+                                <span className="text-lg font-semibold">{playlist.authorName}</span>
+                                <div className="flex items-center text-sm text-gray-300 gap-2">
+                                    <span>{videos.length} 本の動画</span>
+                                    <span>•</span>
+                                    <span>最終更新: {new Date(playlist.createdAt).toLocaleDateString()}</span>
+                                </div>
                             </div>
-                        </Link>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2">
+                             {firstVideoId ? (
+                                <>
+                                    <Link 
+                                        to={`/watch/${firstVideoId}?list=${playlist.id}`}
+                                        className="flex-1 bg-white text-black hover:bg-gray-200 rounded-full py-2.5 px-4 font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                        <PlayIcon className="fill-current text-black w-5 h-5" />
+                                        <span>再生</span>
+                                    </Link>
+                                    <Link 
+                                        to={`/watch/${firstVideoId}?list=${playlist.id}&shuffle=1`}
+                                        className="flex-1 bg-white/10 hover:bg-white/20 text-white rounded-full py-2.5 px-4 font-bold text-sm flex items-center justify-center gap-2 backdrop-blur-sm transition-colors"
+                                    >
+                                        <ShuffleIcon className="fill-current text-white w-5 h-5" />
+                                        <span>シャッフル</span>
+                                    </Link>
+                                </>
+                             ) : (
+                                 <button disabled className="flex-1 bg-white/10 text-gray-400 rounded-full py-2.5 font-bold text-sm cursor-not-allowed">再生</button>
+                             )}
+                        </div>
+
+                        {/* Additional Actions */}
+                        <div className="flex justify-center gap-4 pt-2 border-t border-white/10">
+                            <button onClick={handleDeletePlaylist} className="p-2 rounded-full hover:bg-white/10 text-gray-300 hover:text-red-500 transition-colors" title="プレイリストを削除">
+                                <TrashIcon />
+                            </button>
+                        </div>
                     </div>
-                ) : (
-                    <div className="w-full aspect-video bg-yt-gray rounded-lg mb-4 flex items-center justify-center">
-                        <p className="text-yt-light-gray">動画がありません</p>
-                    </div>
-                )}
-                
-                {isEditingName ? (
-                    <div className="flex items-center mb-2">
-                        <input
-                            type="text"
-                            value={playlistName}
-                            onChange={(e) => setPlaylistName(e.target.value)}
-                            className="w-full bg-transparent border-b-2 border-white px-1 text-3xl font-bold"
-                            autoFocus
-                            onBlur={handleNameSave}
-                            onKeyDown={e => e.key === 'Enter' && handleNameSave()}
-                        />
-                    </div>
-                ) : (
-                    <div className="flex items-start mb-2">
-                        <h1 className="text-3xl font-bold flex-1 break-words">{playlist.name}</h1>
-                        <button onClick={() => setIsEditingName(true)} className="p-2 rounded-full hover:bg-yt-spec-20 ml-2">
-                            <EditIcon />
-                        </button>
-                    </div>
-                )}
-                <div className="text-sm text-yt-light-gray mt-2 space-y-1">
-                    <p className="font-semibold text-white">{playlist.authorName}</p>
-                    <p>{videos.length} 本の動画 \u2022 最終更新 {new Date(playlist.createdAt).toLocaleDateString()}</p>
                 </div>
 
-                <div className="flex items-center gap-2 mt-4">
-                     {videos.length > 0 && firstVideoId && (
-                        <>
-                             <Link to={`/watch/${firstVideoId}?list=${playlist.id}&shuffle=1`} className="p-2 rounded-full hover:bg-yt-spec-20" title="シャッフル">
-                                <ShuffleIcon />
-                            </Link>
-                            <Link to={`/watch/${firstVideoId}?list=${playlist.id}&loop=1`} className="p-2 rounded-full hover:bg-yt-spec-20" title="リピート">
-                                <RepeatIcon />
-                            </Link>
-                        </>
-                    )}
-                    <button onClick={handleDeletePlaylist} className="p-2 rounded-full hover:bg-yt-spec-20" title="プレイリストを削除">
-                        <TrashIcon />
-                    </button>
-                </div>
-            </div>
-            <div className="flex-1">
-                {isLoading ? (
-                    <p>読み込み中...</p>
-                ) : videos.length === 0 ? (
-                    <p>このプレイリストには動画がありません。</p>
-                ) : (
-                    <div className="space-y-1">
-                        {videos.map((video, index) => (
-                            <div
-                                key={`${video.id}-${index}`}
-                                className="flex items-center group p-2 rounded-md hover:bg-yt-dark-gray"
-                                draggable
-                                onDragStart={() => dragItem.current = index}
-                                onDragEnter={() => dragOverItem.current = index}
-                                onDragEnd={handleDragSort}
-                                onDragOver={(e) => e.preventDefault()}
-                            >
-                                <div className="flex items-center text-yt-light-gray mr-4">
-                                    <span className="w-6 text-center">{index + 1}</span>
-                                    <div className="cursor-grab ml-2">
-                                        <DragHandleIcon />
+                {/* Right List (Videos) */}
+                <div className="flex-1 min-w-0">
+                    {isLoading ? (
+                         <div className="flex flex-col gap-4">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                                <div key={i} className="h-24 bg-white/5 rounded-xl animate-pulse" />
+                            ))}
+                         </div>
+                    ) : videos.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-20 text-gray-400 border-2 border-dashed border-white/10 rounded-xl">
+                            <p>このプレイリストには動画がありません。</p>
+                            <Link to="/" className="mt-4 text-yt-blue hover:underline">動画を探す</Link>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-2 pb-20">
+                            {videos.map((video, index) => (
+                                <div
+                                    key={`${video.id}-${index}`}
+                                    className="group flex gap-4 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                                    draggable
+                                    onDragStart={() => dragItem.current = index}
+                                    onDragEnter={() => dragOverItem.current = index}
+                                    onDragEnd={handleDragSort}
+                                    onDragOver={(e) => e.preventDefault()}
+                                >
+                                    {/* Index / Handle */}
+                                    <div className="w-8 flex items-center justify-center flex-shrink-0 text-gray-400 font-medium text-sm">
+                                        <span className="group-hover:hidden">{index + 1}</span>
+                                        <PlayIcon className="hidden group-hover:block w-4 h-4 fill-current text-white" />
+                                    </div>
+
+                                    {/* Thumbnail */}
+                                    <Link to={`/watch/${video.id}?list=${playlist.id}`} className="relative w-40 aspect-video flex-shrink-0 rounded-lg overflow-hidden bg-gray-800">
+                                        <img src={video.thumbnailUrl} alt={video.title} className="w-full h-full object-cover" />
+                                        <span className="absolute bottom-1 right-1 bg-black/80 text-white text-xs px-1 rounded">{video.duration}</span>
+                                    </Link>
+
+                                    {/* Info */}
+                                    <Link to={`/watch/${video.id}?list=${playlist.id}`} className="flex-1 flex flex-col justify-center min-w-0">
+                                        <h3 className="text-base font-bold text-white line-clamp-2 mb-1 group-hover:text-white/90">{video.title}</h3>
+                                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                                            <span>{video.channelName}</span>
+                                            <span>•</span>
+                                            <span>{video.views}</span>
+                                            <span>•</span>
+                                            <span>{video.uploadedAt}</span>
+                                        </div>
+                                    </Link>
+
+                                    {/* Menu Actions */}
+                                    <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                         <div className="cursor-grab p-2 hover:bg-white/20 rounded-full text-gray-300">
+                                            <DragHandleIcon />
+                                        </div>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); playlistId && removeVideoFromPlaylist(playlistId, video.id); }} 
+                                            className="p-2 hover:bg-white/20 rounded-full text-gray-300 hover:text-red-400"
+                                            title="削除"
+                                        >
+                                            <TrashIcon />
+                                        </button>
                                     </div>
                                 </div>
-                                <Link to={`/watch/${video.id}?list=${playlist.id}`} className="flex-1 flex gap-4 items-center">
-                                    <img src={video.thumbnailUrl} alt={video.title} className="w-32 aspect-video rounded-lg"/>
-                                    <div className="flex-1">
-                                        <h3 className="font-semibold line-clamp-2">{video.title}</h3>
-                                        <p className="text-sm text-yt-light-gray">{video.channelName}</p>
-                                    </div>
-                                    <p className="text-sm text-yt-light-gray pr-4">{video.duration}</p>
-                                </Link>
-                                <button onClick={() => playlistId && removeVideoFromPlaylist(playlistId, video.id)} className="p-2 rounded-full hover:bg-yt-spec-20 opacity-0 group-hover:opacity-100" title="プレイリストから削除">
-                                    <TrashIcon />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

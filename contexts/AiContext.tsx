@@ -1,65 +1,38 @@
-
-import React, { createContext, useState, useContext, ReactNode, useRef, useEffect } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useRef } from 'react';
 import * as webllm from "@mlc-ai/web-llm";
 import { useHistory } from './HistoryContext';
 import { useSubscription } from './SubscriptionContext';
-import { usePreference } from './PreferenceContext';
-import { inferTopInterests, buildUserProfile } from '../utils/xrai';
+import { buildUserProfile, inferTopInterests } from '../utils/xrai';
 
 // Use Phi-3.5-mini-instruct for high performance (12B equivalent reasoning) with low VRAM usage
 const SELECTED_MODEL = "Phi-3.5-mini-instruct-q4f16_1-MLC"; 
 
-interface ChatMessage {
+export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
 }
 
 interface AiContextType {
-  messages: ChatMessage[];
   isLoaded: boolean;
   isLoading: boolean;
   loadProgress: string;
-  sendMessage: (text: string) => Promise<void>;
+  messages: Message[];
   initializeEngine: () => Promise<void>;
-  resetChat: () => void;
+  getAiRecommendations: () => Promise<string[]>;
+  sendMessage: (text: string) => Promise<void>;
 }
 
 const AiContext = createContext<AiContextType | undefined>(undefined);
 
 export const AiProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
   
   const engine = useRef<webllm.MLCEngine | null>(null);
   const { history } = useHistory();
   const { subscribedChannels } = useSubscription();
-  const { preferredGenres } = usePreference();
-
-  // Construct system prompt based on XRAI profile
-  const getSystemPrompt = () => {
-    const profile = buildUserProfile({
-        watchHistory: history,
-        searchHistory: [], // Can add if available in context
-        subscribedChannels: subscribedChannels
-    });
-    const interests = inferTopInterests(profile, 10);
-    const userContext = `
-    User Interests: ${interests.join(', ')}
-    Preferred Genres: ${preferredGenres.join(', ')}
-    Recent History: ${history.slice(0, 5).map(v => v.title).join(', ')}
-    `;
-
-    return `あなたは動画共有サイト「XeroxYT」のAIアシスタントです。
-    ユーザーの視聴履歴や好みを分析し、親しみやすい日本語で会話してください。
-    あなたの役割は、動画の推薦、雑談、そしてユーザーの興味を深掘りすることです。
-    
-    [ユーザー情報]
-    ${userContext}
-    
-    回答は短く、簡潔に、フレンドリーにしてください。絵文字も適度に使用してください。`;
-  };
 
   const initializeEngine = async () => {
     if (engine.current || isLoading) return;
@@ -72,17 +45,23 @@ export const AiProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         setLoadProgress(report.text);
       };
 
+      // Explicitly configure app config to ensure caching is used
+      const appConfig: webllm.AppConfig = {
+        ...webllm.prebuiltAppConfig,
+        useIndexedDBCache: true,
+      };
+
       const newEngine = await webllm.CreateMLCEngine(
         SELECTED_MODEL,
-        { initProgressCallback: initProgressCallback }
+        { 
+            initProgressCallback: initProgressCallback,
+            appConfig: appConfig
+        }
       );
 
       engine.current = newEngine;
       setIsLoaded(true);
-      
-      // Initial greeting
-      const initialMsg = { role: 'assistant' as const, content: 'こんにちは！XeroxYTのAIアシスタントです。👋\nあなたの好みに合わせた動画探しをお手伝いします。何か聞きたいことはありますか？' };
-      setMessages([initialMsg]);
+      setMessages([{ role: 'assistant', content: 'こんにちは！動画探しのお手伝いをします。何でも聞いてください。' }]);
 
     } catch (error) {
       console.error("Failed to load WebLLM:", error);
@@ -91,50 +70,78 @@ export const AiProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       setIsLoading(false);
     }
   };
+  
+  // Generates search queries based on user profile (Analysis Only)
+  const getAiRecommendations = async (): Promise<string[]> => {
+    if (!engine.current) {
+        await initializeEngine();
+    }
+    if (!engine.current) return [];
 
-  const sendMessage = async (text: string) => {
-    if (!engine.current || !text.trim()) return;
-
-    const userMsg: ChatMessage = { role: 'user', content: text };
-    setMessages(prev => [...prev, userMsg]);
+    const profile = buildUserProfile({
+        watchHistory: history,
+        searchHistory: [],
+        subscribedChannels: subscribedChannels
+    });
+    const interests = inferTopInterests(profile, 10);
+    
+    const prompt = `
+    Analyze the user's interests: ${interests.join(', ')} and recent history: ${history.slice(0,3).map(v => v.title).join(', ')}.
+    Based on this analysis, generate 5 unique, creative, and specific search queries for YouTube to help them discover NEW content.
+    Do not number the list. Just output 5 lines of search terms. Japanese or English.
+    `;
 
     try {
-      // Dynamic System Prompt injection
-      const historyMsgs = messages.map(m => ({ role: m.role, content: m.content }));
-      const prompt = [
-          { role: 'system', content: getSystemPrompt() },
-          ...historyMsgs,
-          userMsg
-      ];
-
-      const reply = await engine.current.chat.completions.create({
-        messages: prompt as any,
-        temperature: 0.7,
-        max_tokens: 256, // Keep responses concise
-      });
-
-      const assistantMsg: ChatMessage = { 
-        role: 'assistant', 
-        content: reply.choices[0].message.content || 'すみません、うまく答えられませんでした。' 
-      };
-      
-      setMessages(prev => [...prev, assistantMsg]);
-    } catch (error) {
-      console.error("Chat generation failed:", error);
-      setMessages(prev => [...prev, { role: 'assistant', content: 'エラーが発生しました。もう一度試してください。' }]);
+        const reply = await engine.current.chat.completions.create({
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.8,
+            max_tokens: 100,
+        });
+        
+        const content = reply.choices[0].message.content || '';
+        // Split by newlines and clean up
+        const queries = content.split('\n')
+            .map(line => line.replace(/^\d+\.\s*/, '').replace(/^- \s*/, '').trim())
+            .filter(line => line.length > 0);
+            
+        return queries.slice(0, 5);
+    } catch (e) {
+        console.error("Recommendation generation failed", e);
+        return interests.slice(0, 5);
     }
   };
 
-  const resetChat = () => {
-      if(engine.current) {
-          engine.current.resetChat();
+  const sendMessage = async (text: string) => {
+      if (!engine.current || !text.trim()) return;
+
+      const newMessages: Message[] = [...messages, { role: 'user', content: text }];
+      setMessages(newMessages);
+
+      try {
+          const historyContext = history.slice(0, 10).map(v => v.title).join(', ');
+          const systemPrompt = `You are a helpful YouTube video assistant. The user has watched recently: ${historyContext}. Answer in Japanese if the user asks in Japanese. Be concise.`;
+          
+          const completionMessages = [
+              { role: 'system', content: systemPrompt },
+              ...newMessages.map(m => ({ role: m.role, content: m.content }))
+          ];
+
+          const reply = await engine.current.chat.completions.create({
+              messages: completionMessages as any,
+              temperature: 0.7,
+              max_tokens: 512,
+          });
+          
+          const responseContent = reply.choices[0].message.content || "";
+          setMessages(prev => [...prev, { role: 'assistant', content: responseContent }]);
+      } catch (e) {
+           console.error("Chat completion failed", e);
+           setMessages(prev => [...prev, { role: 'assistant', content: "エラーが発生しました。" }]);
       }
-      setMessages([]);
-      initializeEngine(); // Re-init to send greeting
   };
 
   return (
-    <AiContext.Provider value={{ messages, isLoaded, isLoading, loadProgress, sendMessage, initializeEngine, resetChat }}>
+    <AiContext.Provider value={{ isLoaded, isLoading, loadProgress, messages, initializeEngine, getAiRecommendations, sendMessage }}>
       {children}
     </AiContext.Provider>
   );

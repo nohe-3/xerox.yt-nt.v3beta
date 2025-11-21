@@ -398,4 +398,21 @@ app.get('/api/fvideo', async (req, res) => {
   }
 });
 
+// -------------------------------------------------------------------
+// サーバーサイドAI Fallback Endpoint (/api/ai/completion)
+// Note: Real LLMs are too heavy for serverless functions.
+// This acts as a logic placeholder or lightweight suggestion engine.
+// -------------------------------------------------------------------
+app.get('/api/ai/completion', (req, res) => {
+    const { context } = req.query;
+    // Heuristic fallback since we cannot run Phi-3 here
+    const topics = ["ASMR", "Gaming", "Vtuber", "Music", "Tech"];
+    const randomTopic = topics[Math.floor(Math.random() * topics.length)];
+    
+    res.status(200).json({ 
+        response: `Suggestion based on server logic: Try watching ${randomTopic} videos!`,
+        recommended_tags: [randomTopic, "Trending", "New"]
+    });
+});
+
 export default app;

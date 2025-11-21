@@ -6,10 +6,12 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import { useSearchHistory } from '../contexts/SearchHistoryContext';
 import { useHistory } from '../contexts/HistoryContext';
 import { usePreference } from '../contexts/PreferenceContext';
+import { useAi } from '../contexts/AiContext';
 import { getXraiRecommendations, getLegacyRecommendations } from '../utils/recommendation';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import type { Video } from '../types';
 import { SearchIcon, SaveIcon, DownloadIcon } from '../components/icons/Icons';
+import { searchVideos } from '../utils/api';
 
 // Helper to parse duration string to seconds
 const parseDuration = (iso: string, text: string): number => {
@@ -40,6 +42,9 @@ const HomePage: React.FC = () => {
     const [page, setPage] = useState(1);
     const [isFetchingMore, setIsFetchingMore] = useState(false);
     const [hasNextPage, setHasNextPage] = useState(true);
+    
+    const [isAiGenerating, setIsAiGenerating] = useState(false);
+    const [aiMode, setAiMode] = useState(false);
 
     const seenIdsRef = useRef<Set<string>>(new Set());
 
@@ -47,6 +52,7 @@ const HomePage: React.FC = () => {
     const { searchHistory } = useSearchHistory();
     const { history: watchHistory } = useHistory();
     const { preferredGenres, preferredChannels, ngKeywords, ngChannels, exportUserData, importUserData, useXrai } = usePreference();
+    const { getAiRecommendations } = useAi();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const isNewUser = useMemo(() => {
@@ -58,6 +64,8 @@ const HomePage: React.FC = () => {
     }, [subscribedChannels, searchHistory, watchHistory, preferredGenres]);
 
     const loadRecommendations = useCallback(async (pageNum: number) => {
+        if (aiMode) return; // AI mode handled separately
+
         const isInitial = pageNum === 1;
         if (isInitial) {
             setIsLoading(true);
@@ -75,13 +83,9 @@ const HomePage: React.FC = () => {
                     preferredGenres, preferredChannels, ngKeywords, ngChannels,
                     page: pageNum
                 });
-                // XRAI is dynamic, so we can always pretend there's more by re-running with slight randomization
                 setHasNextPage(true); 
             } else {
-                // Use the legacy engine
                 if (pageNum > 1) {
-                    // Legacy API (fvideo) doesn't support pagination in this implementation easily without token tracking state
-                    // For now, legacy is single page to avoid complexity, or we could refactor api/fvideo
                     setIsFetchingMore(false);
                     setHasNextPage(false);
                     return;
@@ -124,21 +128,56 @@ const HomePage: React.FC = () => {
             setIsLoading(false);
             setIsFetchingMore(false);
         }
-    }, [subscribedChannels, searchHistory, watchHistory, preferredGenres, preferredChannels, ngKeywords, ngChannels, useXrai]);
+    }, [subscribedChannels, searchHistory, watchHistory, preferredGenres, preferredChannels, ngKeywords, ngChannels, useXrai, aiMode]);
 
     useEffect(() => {
-        setPage(1);
+        if (!aiMode) {
+            setPage(1);
+            setFeed([]);
+            setShortsFeed([]);
+            seenIdsRef.current.clear();
+            setError(null);
+            setHasNextPage(true);
+            
+            loadRecommendations(1);
+        }
+    }, [loadRecommendations, aiMode]);
+    
+    const triggerAiCurator = async () => {
+        setAiMode(true);
+        setIsAiGenerating(true);
+        setIsLoading(true);
         setFeed([]);
         setShortsFeed([]);
         seenIdsRef.current.clear();
-        setError(null);
-        setHasNextPage(true);
-        
-        loadRecommendations(1);
-    }, [loadRecommendations]);
+
+        try {
+            const queries = await getAiRecommendations();
+            console.log("AI Generated Queries:", queries);
+            
+            const searchPromises = queries.map(q => searchVideos(q, '1').then(res => res.videos));
+            const results = await Promise.all(searchPromises);
+            const merged = results.flat();
+            
+            // Shuffle and dedup
+            const unique = Array.from(new Map(merged.map(v => [v.id, v])).values());
+            const shuffled = unique.sort(() => Math.random() - 0.5);
+            
+            setFeed(shuffled);
+            setHasNextPage(false); // AI feed is finite for now
+
+        } catch (e) {
+            console.error(e);
+            setError("AIおすすめの生成に失敗しました");
+            setAiMode(false);
+        } finally {
+            setIsAiGenerating(false);
+            setIsLoading(false);
+        }
+    }
 
     const loadMore = () => {
-        if (!isFetchingMore && !isLoading && hasNextPage) {
+        if (!isFetchingMore && !isLoading && hasNextPage && !aiMode) {
             const nextPage = page + 1;
             setPage(nextPage);
             loadRecommendations(nextPage);
@@ -159,7 +198,7 @@ const HomePage: React.FC = () => {
     };
 
     // 初期ユーザーかつ読み込み完了後
-    if (isNewUser && feed.length === 0 && !isLoading) {
+    if (isNewUser && feed.length === 0 && !isLoading && !aiMode) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 animate-fade-in">
                 <div className="bg-yt-light dark:bg-yt-spec-10 p-6 rounded-full mb-6">
@@ -201,20 +240,52 @@ const HomePage: React.FC = () => {
 
     return (
         <div className="pb-10">
+            {/* Categories / Filter Bar with AI Button */}
+             <div className="sticky top-14 bg-yt-white/95 dark:bg-yt-black/95 backdrop-blur-md z-20 pb-2 pt-2 mb-4 -mx-4 px-4 border-b border-yt-spec-light-10 dark:border-yt-spec-10">
+                <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
+                     <button 
+                        onClick={() => setAiMode(false)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${!aiMode ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-yt-light dark:bg-yt-spec-10 hover:bg-gray-200 dark:hover:bg-yt-spec-20'}`}
+                     >
+                        すべて
+                     </button>
+                     <button 
+                        onClick={triggerAiCurator}
+                        disabled={isAiGenerating}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-bold whitespace-nowrap transition-all flex items-center gap-2 ${aiMode ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg' : 'bg-yt-light dark:bg-yt-spec-10 hover:bg-gray-200 dark:hover:bg-yt-spec-20'}`}
+                     >
+                        {isAiGenerating ? <div className="animate-spin h-3 w-3 border-2 border-white rounded-full border-t-transparent"/> : '✨'}
+                        AIキュレーター
+                     </button>
+                     {/* Static genre chips based on preferences */}
+                     {preferredGenres.map(g => (
+                         <button key={g} className="px-3 py-1.5 bg-yt-light dark:bg-yt-spec-10 rounded-lg text-sm font-medium whitespace-nowrap hover:bg-gray-200 dark:hover:bg-yt-spec-20">
+                             {g}
+                         </button>
+                     ))}
+                </div>
+            </div>
+
             {error && <div className="text-red-500 text-center mb-4">{error}</div>}
             
-            {/* Show shorts shelf if it has items OR if we are in the initial loading state to show skeletons */}
-            {(shortsFeed.length > 0 || isLoading) && (
+            {aiMode && !isLoading && feed.length > 0 && (
+                <div className="mb-6 px-2">
+                    <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-blue-500">
+                        AIが選んだあなたへのおすすめ
+                    </h2>
+                    <p className="text-sm text-yt-light-gray">ローカルLLMがあなたの興味に基づいて生成したプレイリストです</p>
+                </div>
+            )}
+            
+            {(shortsFeed.length > 0 || (isLoading && !aiMode)) && !aiMode && (
                 <div className="mb-8">
                     <ShortsShelf shorts={shortsFeed} isLoading={isLoading && shortsFeed.length === 0} />
                     <hr className="border-yt-spec-light-20 dark:border-yt-spec-20 mt-6" />
                 </div>
             )}
 
-            {/* Show grid. Pass isLoading to VideoGrid for Skeleton handling */}
             <VideoGrid videos={feed} isLoading={isLoading && feed.length === 0} />
 
-            {/* Skeletons for infinite scroll loading (appended at bottom) */}
             {isFetchingMore && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-x-4 gap-y-8 mt-8">
                     {Array.from({ length: 10 }).map((_, index) => (
@@ -232,7 +303,7 @@ const HomePage: React.FC = () => {
                 </div>
             )}
 
-            {!isLoading && hasNextPage && feed.length > 0 && (
+            {!isLoading && hasNextPage && feed.length > 0 && !aiMode && (
                 <div ref={lastElementRef} className="h-20 flex justify-center items-center" />
             )}
         </div>
