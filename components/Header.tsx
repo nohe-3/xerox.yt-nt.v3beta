@@ -1,11 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
-import { MenuIcon, YouTubeLogo, SearchIcon, BellIcon, LightbulbIcon, MoonIcon, SettingsIcon, SaveIcon, DownloadIcon } from './icons/Icons';
+import { MenuIcon, YouTubeLogo, SearchIcon, BellIcon, LightbulbIcon, MoonIcon, SettingsIcon, SaveIcon, DownloadIcon, TrashIcon, HistoryIcon } from './icons/Icons';
 import { useNotification } from '../contexts/NotificationContext';
 import { useSearchHistory } from '../contexts/SearchHistoryContext';
 import { usePreference } from '../contexts/PreferenceContext';
+import { useHistory } from '../contexts/HistoryContext';
 import NotificationDropdown from './NotificationDropdown';
+import HistoryDeletionModal from './HistoryDeletionModal';
 
 const { useNavigate, Link } = ReactRouterDOM;
 
@@ -19,11 +21,13 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, theme, toggleTheme }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isHistoryDeletionModalOpen, setIsHistoryDeletionModalOpen] = useState(false);
   const [useProxy, setUseProxy] = useState(localStorage.getItem('useChannelHomeProxy') !== 'false');
 
   const { notifications, unreadCount, markAsRead } = useNotification();
   const { addSearchTerm } = useSearchHistory();
   const { exportUserData, importUserData } = usePreference();
+  const { clearHistory } = useHistory();
   const navigate = useNavigate();
   const notificationRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -65,6 +69,13 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, theme, toggleTheme }) =>
       const file = e.target.files?.[0];
       if (file) {
           await importUserData(file);
+      }
+  };
+
+  const handleClearAllHistory = () => {
+      if (window.confirm('視聴履歴をすべて削除しますか？この操作は取り消せません。')) {
+          clearHistory();
+          alert('視聴履歴を削除しました。');
       }
   };
 
@@ -179,6 +190,24 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, theme, toggleTheme }) =>
                         </button>
 
                         <hr className="my-2 border-yt-spec-light-20 dark:border-yt-spec-20" />
+
+                        <div className="px-4 py-2 text-xs font-bold text-yt-light-gray uppercase tracking-wider">履歴管理</div>
+                        <button 
+                            onClick={handleClearAllHistory}
+                            className="w-full text-left flex items-center px-4 py-2 hover:bg-yt-spec-light-10 dark:hover:bg-yt-spec-10 text-sm text-black dark:text-white gap-2"
+                        >
+                            <TrashIcon />
+                            全ての履歴を削除
+                        </button>
+                        <button 
+                            onClick={() => { setIsHistoryDeletionModalOpen(true); setIsSettingsOpen(false); }}
+                            className="w-full text-left flex items-center px-4 py-2 hover:bg-yt-spec-light-10 dark:hover:bg-yt-spec-10 text-sm text-black dark:text-white gap-2"
+                        >
+                            <HistoryIcon />
+                            選択して削除
+                        </button>
+
+                        <hr className="my-2 border-yt-spec-light-20 dark:border-yt-spec-20" />
                         
                         <div className="px-4 py-2 text-xs font-bold text-yt-light-gray uppercase tracking-wider">データのバックアップ (JSON)</div>
                         
@@ -213,6 +242,12 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, theme, toggleTheme }) =>
             )}
         </div>
       </div>
+      {isHistoryDeletionModalOpen && (
+        <HistoryDeletionModal 
+          isOpen={isHistoryDeletionModalOpen} 
+          onClose={() => setIsHistoryDeletionModalOpen(false)} 
+        />
+      )}
     </header>
   );
 };
