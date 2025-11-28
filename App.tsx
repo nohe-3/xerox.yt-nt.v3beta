@@ -35,6 +35,9 @@ const App: React.FC = () => {
         setIsSidebarOpen(false);
     } else if (!isShortsPage) {
         setIsSidebarOpen(true);
+    } else if (isShortsPage) {
+        // Shorts page starts with closed sidebar (full screen feel)
+        setIsSidebarOpen(false);
     }
   }, [location.pathname, isPlayerPage, isShortsPage]);
 
@@ -58,7 +61,9 @@ const App: React.FC = () => {
   const mainContentPadding = isShortsPage ? '' : 'p-0 md:p-6 pb-16 md:pb-6'; 
   
   const shouldShowSidebar = () => {
-    if (isShortsPage) return false;
+    // Show sidebar logic:
+    // - Always show if not player/shorts (it handles its own collapsed state)
+    // - On Shorts, we ALLOW it to render so the hamburger menu works, but it will overlay.
     if (isPlayerPage && !isSidebarOpen) return false; 
     return true;
   };

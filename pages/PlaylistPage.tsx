@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 import { usePlaylist } from '../contexts/PlaylistContext';
@@ -45,7 +44,7 @@ const PlaylistPage: React.FC = () => {
     }, [playlist]);
 
     if (!playlist) {
-        return <div className="text-center p-8 text-white">プレイリストが見つかりません。</div>;
+        return <div className="text-center p-8 text-black dark:text-white">プレイリストが見つかりません。</div>;
     }
     
     const handleNameSave = () => {
@@ -75,7 +74,7 @@ const PlaylistPage: React.FC = () => {
     const coverImage = videos.length > 0 ? videos[0].thumbnailUrl : '';
 
     return (
-        <div className="min-h-screen bg-yt-black text-white">
+        <div className="min-h-screen bg-yt-white dark:bg-yt-black text-black dark:text-white">
             {/* Background Gradient Blur */}
             {coverImage && (
                 <div 
@@ -93,7 +92,7 @@ const PlaylistPage: React.FC = () => {
             <div className="relative z-10 flex flex-col lg:flex-row gap-8 p-6 max-w-[1600px] mx-auto">
                 {/* Left Sidebar (Info) */}
                 <div className="lg:w-[360px] flex-shrink-0">
-                    <div className="lg:sticky lg:top-24 flex flex-col gap-6 p-6 rounded-3xl bg-gradient-to-b from-white/10 to-black/40 backdrop-blur-md border border-white/10 shadow-2xl">
+                    <div className="lg:sticky lg:top-24 flex flex-col gap-6 p-6 rounded-3xl bg-white/20 dark:bg-black/40 backdrop-blur-md border border-white/10 shadow-2xl text-black dark:text-white">
                         {/* Cover Image */}
                         <div className="relative group aspect-video md:aspect-square rounded-xl overflow-hidden shadow-lg bg-yt-dark-gray">
                             {coverImage ? (
@@ -121,7 +120,7 @@ const PlaylistPage: React.FC = () => {
                                         type="text"
                                         value={playlistName}
                                         onChange={(e) => setPlaylistName(e.target.value)}
-                                        className="w-full bg-transparent border-b-2 border-white text-2xl font-bold outline-none pb-1"
+                                        className="w-full bg-transparent border-b-2 border-black dark:border-white text-2xl font-bold outline-none pb-1"
                                         autoFocus
                                         onBlur={handleNameSave}
                                         onKeyDown={e => e.key === 'Enter' && handleNameSave()}
@@ -130,7 +129,7 @@ const PlaylistPage: React.FC = () => {
                                 </div>
                             ) : (
                                 <h1 
-                                    className="text-3xl font-bold cursor-pointer hover:text-gray-200 line-clamp-2"
+                                    className="text-3xl font-bold cursor-pointer hover:opacity-80 line-clamp-2"
                                     onClick={() => setIsEditingName(true)}
                                     title="クリックして編集"
                                 >
@@ -140,7 +139,7 @@ const PlaylistPage: React.FC = () => {
                             
                             <div className="flex flex-col gap-1">
                                 <span className="text-lg font-semibold">{playlist.authorName}</span>
-                                <div className="flex items-center text-sm text-gray-300 gap-2">
+                                <div className="flex items-center text-sm opacity-80 gap-2">
                                     <span>{videos.length} 本の動画</span>
                                     <span>•</span>
                                     <span>最終更新: {new Date(playlist.createdAt).toLocaleDateString()}</span>
@@ -154,27 +153,27 @@ const PlaylistPage: React.FC = () => {
                                 <>
                                     <Link 
                                         to={`/watch/${firstVideoId}?list=${playlist.id}`}
-                                        className="flex-1 bg-white text-black hover:bg-gray-200 rounded-full py-2.5 px-4 font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                                        className="flex-1 bg-black dark:bg-white text-white dark:text-black hover:opacity-80 rounded-full py-2.5 px-4 font-bold text-sm flex items-center justify-center gap-2 transition-colors"
                                     >
-                                        <PlayIcon className="fill-current text-black w-5 h-5" />
+                                        <PlayIcon className="fill-current text-white dark:text-black w-5 h-5" />
                                         <span>再生</span>
                                     </Link>
                                     <Link 
                                         to={`/watch/${firstVideoId}?list=${playlist.id}&shuffle=1`}
-                                        className="flex-1 bg-white/10 hover:bg-white/20 text-white rounded-full py-2.5 px-4 font-bold text-sm flex items-center justify-center gap-2 backdrop-blur-sm transition-colors"
+                                        className="flex-1 bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 text-black dark:text-white rounded-full py-2.5 px-4 font-bold text-sm flex items-center justify-center gap-2 backdrop-blur-sm transition-colors"
                                     >
-                                        <ShuffleIcon className="fill-current text-white w-5 h-5" />
+                                        <ShuffleIcon className="fill-current text-black dark:text-white w-5 h-5" />
                                         <span>シャッフル</span>
                                     </Link>
                                 </>
                              ) : (
-                                 <button disabled className="flex-1 bg-white/10 text-gray-400 rounded-full py-2.5 font-bold text-sm cursor-not-allowed">再生</button>
+                                 <button disabled className="flex-1 bg-gray-200 dark:bg-white/10 text-gray-400 rounded-full py-2.5 font-bold text-sm cursor-not-allowed">再生</button>
                              )}
                         </div>
 
                         {/* Additional Actions */}
-                        <div className="flex justify-center gap-4 pt-2 border-t border-white/10">
-                            <button onClick={handleDeletePlaylist} className="p-2 rounded-full hover:bg-white/10 text-gray-300 hover:text-red-500 transition-colors" title="プレイリストを削除">
+                        <div className="flex justify-center gap-4 pt-2 border-t border-black/10 dark:border-white/10">
+                            <button onClick={handleDeletePlaylist} className="p-2 rounded-full hover:bg-black/10 dark:hover:bg-white/10 text-gray-500 dark:text-gray-300 hover:text-red-500 transition-colors" title="プレイリストを削除">
                                 <TrashIcon />
                             </button>
                         </div>
@@ -186,11 +185,11 @@ const PlaylistPage: React.FC = () => {
                     {isLoading ? (
                          <div className="flex flex-col gap-4">
                             {Array.from({ length: 5 }).map((_, i) => (
-                                <div key={i} className="h-24 bg-white/5 rounded-xl animate-pulse" />
+                                <div key={i} className="h-24 bg-gray-200 dark:bg-white/5 rounded-xl animate-pulse" />
                             ))}
                          </div>
                     ) : videos.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-20 text-gray-400 border-2 border-dashed border-white/10 rounded-xl">
+                        <div className="flex flex-col items-center justify-center py-20 text-gray-400 border-2 border-dashed border-gray-300 dark:border-white/10 rounded-xl">
                             <p>このプレイリストには動画がありません。</p>
                             <Link to="/" className="mt-4 text-yt-blue hover:underline">動画を探す</Link>
                         </div>
@@ -199,7 +198,7 @@ const PlaylistPage: React.FC = () => {
                             {videos.map((video, index) => (
                                 <div
                                     key={`${video.id}-${index}`}
-                                    className="group flex gap-4 p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                                    className="group flex gap-4 p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
                                     draggable
                                     onDragStart={() => dragItem.current = index}
                                     onDragEnter={() => dragOverItem.current = index}
@@ -209,7 +208,7 @@ const PlaylistPage: React.FC = () => {
                                     {/* Index / Handle */}
                                     <div className="w-8 flex items-center justify-center flex-shrink-0 text-gray-400 font-medium text-sm">
                                         <span className="group-hover:hidden">{index + 1}</span>
-                                        <PlayIcon className="hidden group-hover:block w-4 h-4 fill-current text-white" />
+                                        <PlayIcon className="hidden group-hover:block w-4 h-4 fill-current text-black dark:text-white" />
                                     </div>
 
                                     {/* Thumbnail */}
@@ -220,8 +219,8 @@ const PlaylistPage: React.FC = () => {
 
                                     {/* Info */}
                                     <Link to={`/watch/${video.id}?list=${playlist.id}`} className="flex-1 flex flex-col justify-center min-w-0">
-                                        <h3 className="text-base font-bold text-white line-clamp-2 mb-1 group-hover:text-white/90">{video.title}</h3>
-                                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                                        <h3 className="text-base font-bold text-black dark:text-white line-clamp-2 mb-1 group-hover:opacity-80">{video.title}</h3>
+                                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                                             <span>{video.channelName}</span>
                                             <span>•</span>
                                             <span>{video.views}</span>
@@ -232,12 +231,12 @@ const PlaylistPage: React.FC = () => {
 
                                     {/* Menu Actions */}
                                     <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                         <div className="cursor-grab p-2 hover:bg-white/20 rounded-full text-gray-300">
+                                         <div className="cursor-grab p-2 hover:bg-black/10 dark:hover:bg-white/20 rounded-full text-gray-400 dark:text-gray-300">
                                             <DragHandleIcon />
                                         </div>
                                         <button 
                                             onClick={(e) => { e.stopPropagation(); playlistId && removeVideoFromPlaylist(playlistId, video.id); }} 
-                                            className="p-2 hover:bg-white/20 rounded-full text-gray-300 hover:text-red-400"
+                                            className="p-2 hover:bg-black/10 dark:hover:bg-white/20 rounded-full text-gray-400 dark:text-gray-300 hover:text-red-500"
                                             title="削除"
                                         >
                                             <TrashIcon />

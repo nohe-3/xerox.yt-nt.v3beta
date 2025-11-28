@@ -452,30 +452,3 @@ export async function getPlaylistDetails(playlistId: string): Promise<PlaylistDe
         videos: videos
     };
 }
-
-// Special fetcher for Shorts Comments based on user request
-export interface ShortsComment {
-    author: string;
-    authorIcon: string;
-    text: string;
-    date: string;
-    likes: string;
-}
-
-export interface ShortsCommentsResponse {
-    totalCommentCount: string;
-    comments: ShortsComment[];
-}
-
-export async function getShortsComments(videoId: string): Promise<ShortsCommentsResponse> {
-    try {
-        const response = await fetch(`https://siawaseok.duckdns.org/api/comments/${videoId}`);
-        if (!response.ok) {
-             throw new Error("Failed to fetch shorts comments");
-        }
-        return await response.json();
-    } catch (e) {
-        console.error("Error fetching shorts comments:", e);
-        return { totalCommentCount: "0", comments: [] };
-    }
-}
