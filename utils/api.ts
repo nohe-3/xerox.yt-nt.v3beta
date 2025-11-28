@@ -504,8 +504,37 @@ export async function getChannelVideos(channelId: string, pageToken = '1'): Prom
 }
 
 export async function getChannelShorts(channelId: string): Promise<{ videos: Video[] }> {
-    const data = await apiFetch(`channel-shorts?id=${channelId}`);
-    const videos: Video[] = Array.isArray(data) ? data.map(mapYoutubeiVideoToVideo).filter((v): v is Video => v !== null) : [];
+    const data = await apiFetch(`shorts?id=${channelId}`);
+    
+    // Data can come in different shapes depending on youtubei.js version and channel type
+    const contents = data?.current_tab?.content?.contents 
+                     || data?.contents?.tabs?.[1]?.content?.contents
+                     || [];
+
+    const videos: Video[] = contents.map((item: any) => {
+        const lockup = item.content || item.richItem?.content; // Handle both direct content and RichItem wrappers
+        if (lockup?.type !== 'ShortsLockupView') return null;
+
+        const videoId = lockup.on_tap?.innertubeCommand?.payload?.videoId;
+        if (!videoId) return null;
+        
+        let thumbnailUrl = lockup.thumbnail?.sources?.[0]?.url || '';
+        if (thumbnailUrl) thumbnailUrl = thumbnailUrl.split('?')[0];
+
+        return {
+            id: videoId,
+            title: lockup.overlay_metadata?.primaryText?.content || 'Untitled Short',
+            thumbnailUrl: thumbnailUrl,
+            views: lockup.overlay_metadata?.secondaryText?.content || '',
+            duration: '', // Shorts cards don't have duration
+            isoDuration: '',
+            uploadedAt: '', // Not available on shorts card
+            channelName: '', // Will be filled in by calling component (ChannelPage)
+            channelId: '',
+            channelAvatarUrl: '',
+        } as Video;
+    }).filter((v: Video | null): v is Video => v !== null);
+
     return { videos };
 }
 

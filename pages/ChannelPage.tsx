@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // FIX: Use named imports for react-router-dom components and hooks.
 import { useParams, Link } from 'react-router-dom';
-import { getChannelDetails, getChannelVideos, getChannelHome, mapHomeVideoToVideo, getPlayerConfig } from '../utils/api';
-import type { ChannelDetails, Video, Channel, ChannelHomeData, HomePlaylist } from '../types';
+import { getChannelDetails, getChannelVideos, getChannelHome, mapHomeVideoToVideo, getPlayerConfig, getChannelShorts, getChannelPlaylists } from '../utils/api';
+import type { ChannelDetails, Video, Channel, ChannelHomeData, ApiPlaylist } from '../types';
 import VideoGrid from '../components/VideoGrid';
 import VideoCard from '../components/VideoCard';
+import ShortsCard from '../components/ShortsCard';
+import SearchPlaylistResultCard from '../components/SearchPlaylistResultCard';
 import VideoCardSkeleton from '../components/icons/VideoCardSkeleton';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { usePreference } from '../contexts/PreferenceContext';
@@ -12,7 +14,7 @@ import HorizontalScrollContainer from '../components/HorizontalScrollContainer';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { BlockIcon } from '../components/icons/Icons';
 
-type Tab = 'home' | 'videos';
+type Tab = 'home' | 'videos' | 'shorts' | 'playlists';
 
 const ChannelPage: React.FC = () => {
     const { channelId } = useParams<{ channelId: string }>();
@@ -23,6 +25,8 @@ const ChannelPage: React.FC = () => {
 
     const [homeData, setHomeData] = useState<ChannelHomeData | null>(null);
     const [videos, setVideos] = useState<Video[]>([]);
+    const [shorts, setShorts] = useState<Video[]>([]);
+    const [playlists, setPlaylists] = useState<ApiPlaylist[]>([]);
     
     const [videosPageToken, setVideosPageToken] = useState<string | undefined>('1');
     const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -38,6 +42,8 @@ const ChannelPage: React.FC = () => {
             setIsLoading(true);
             setError(null);
             setVideos([]);
+            setShorts([]);
+            setPlaylists([]);
             setHomeData(null);
             setVideosPageToken('1');
             setActiveTab('home');
@@ -87,6 +93,24 @@ const ChannelPage: React.FC = () => {
                     setVideos(prev => pageToken && pageToken !== '1' ? [...prev, ...enrichedVideos] : enrichedVideos);
                     setVideosPageToken(vData.nextPageToken);
                     break;
+                case 'shorts':
+                    if (shorts.length === 0) {
+                        const sData = await getChannelShorts(channelId);
+                        const enrichedShorts = sData.videos.map(v => ({
+                            ...v,
+                            channelName: channelDetails?.name || v.channelName,
+                            channelAvatarUrl: channelDetails?.avatarUrl || v.channelAvatarUrl,
+                            channelId: channelDetails?.id || v.channelId,
+                        }));
+                        setShorts(enrichedShorts);
+                    }
+                    break;
+                case 'playlists':
+                    if (playlists.length === 0) {
+                        const pData = await getChannelPlaylists(channelId);
+                        setPlaylists(pData.playlists);
+                    }
+                    break;
             }
         } catch (err: any) {
             console.error(`Failed to load ${tab}`, err);
@@ -107,7 +131,7 @@ const ChannelPage: React.FC = () => {
             setIsTabLoading(false);
             setIsFetchingMore(false);
         }
-    }, [channelId, isFetchingMore, homeData, channelDetails]);
+    }, [channelId, isFetchingMore, homeData, channelDetails, shorts.length, playlists.length]);
     
     useEffect(() => {
         if (channelId && !isLoading) {
@@ -115,9 +139,13 @@ const ChannelPage: React.FC = () => {
                 fetchTabData('home');
             } else if (activeTab === 'videos' && videos.length === 0) {
                 fetchTabData('videos', '1');
+            } else if (activeTab === 'shorts' && shorts.length === 0) {
+                fetchTabData('shorts');
+            } else if (activeTab === 'playlists' && playlists.length === 0) {
+                fetchTabData('playlists');
             }
         }
-    }, [activeTab, channelId, isLoading, fetchTabData, videos.length, homeData]);
+    }, [activeTab, channelId, isLoading, fetchTabData, videos.length, homeData, shorts.length, playlists.length]);
 
     const handleLoadMore = useCallback(() => {
         if (activeTab === 'videos' && videosPageToken && !isFetchingMore) {
@@ -169,7 +197,7 @@ const ChannelPage: React.FC = () => {
     const TabButton: React.FC<{tab: Tab, label: string}> = ({tab, label}) => (
         <button 
             onClick={() => setActiveTab(tab)}
-            className={`px-6 py-3 font-semibold text-base border-b-2 transition-colors ${activeTab === tab ? 'border-black dark:border-white text-black dark:text-white' : 'border-transparent text-yt-light-gray hover:text-black dark:hover:text-white'}`}
+            className={`px-4 sm:px-6 py-3 font-semibold text-sm sm:text-base border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-black dark:border-white text-black dark:text-white' : 'border-transparent text-yt-light-gray hover:text-black dark:hover:text-white'}`}
         >
             {label}
         </button>
@@ -306,6 +334,8 @@ const ChannelPage: React.FC = () => {
             <div className="flex border-b border-yt-spec-light-20 dark:border-yt-spec-20 mb-6 overflow-x-auto no-scrollbar">
                 <TabButton tab="home" label="ホーム" />
                 <TabButton tab="videos" label="動画" />
+                <TabButton tab="shorts" label="ショート" />
+                <TabButton tab="playlists" label="再生リスト" />
             </div>
 
             {activeTab === 'home' && renderHomeTab()}
@@ -315,6 +345,50 @@ const ChannelPage: React.FC = () => {
                      <VideoGrid videos={videos} isLoading={isTabLoading} hideChannelInfo />
                      {isFetchingMore && <div className="text-center py-4"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-yt-blue mx-auto"></div></div>}
                      <div ref={lastElementRef} className="h-10" />
+                </div>
+            )}
+            
+            {activeTab === 'shorts' && (
+                <div>
+                    {isTabLoading && shorts.length === 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4">
+                            {Array.from({ length: 12 }).map((_, index) => (
+                                <div key={index} className="w-full aspect-[9/16] rounded-xl bg-yt-light dark:bg-yt-dark-gray animate-pulse"></div>
+                            ))}
+                        </div>
+                    ) : shorts.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4">
+                            {shorts.map(short => (
+                                <ShortsCard key={short.id} video={short} />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center p-8 text-yt-light-gray">このチャンネルにはショート動画がありません。</div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === 'playlists' && (
+                <div>
+                    {isTabLoading && playlists.length === 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-8">
+                            {Array.from({ length: 10 }).map((_, index) => (
+                                <div key={index} className="flex flex-col gap-2 animate-pulse">
+                                  <div className="w-full aspect-video bg-yt-light dark:bg-yt-dark-gray rounded-xl"></div>
+                                  <div className="h-4 bg-yt-light dark:bg-yt-dark-gray rounded w-3/4"></div>
+                                  <div className="h-3 bg-yt-light dark:bg-yt-dark-gray rounded w-1/2"></div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : playlists.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-8">
+                            {playlists.map(playlist => (
+                                <SearchPlaylistResultCard key={playlist.id} playlist={playlist} />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center p-8 text-yt-light-gray">このチャンネルには再生リストがありません。</div>
+                    )}
                 </div>
             )}
         </div>
