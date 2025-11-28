@@ -157,6 +157,12 @@ export const getXraiShorts = async (sources: RecommendationSource & { seenIds?: 
         seenIds = []
     } = sources;
 
+    // --- Configuration ---
+    const BATCH_SIZE = 20;
+    const POPULAR_RATIO = 0.85; // 85% Popular Shorts
+    const targetPopularCount = Math.ceil(BATCH_SIZE * POPULAR_RATIO);
+    const targetPersonalizedCount = BATCH_SIZE - targetPopularCount;
+
     // --- User Profile Construction (Simplified Two-Tower concept) ---
     // User Vector: Map<Keyword, Weight>
     const userVector = new Map<string, number>();
@@ -164,45 +170,37 @@ export const getXraiShorts = async (sources: RecommendationSource & { seenIds?: 
         extractKeywords(text).forEach(k => userVector.set(k, (userVector.get(k) || 0) + weight));
     };
 
-    // Signal weights based on "YouTube Shorts Recommendation Analysis"
-    // - Subscribed channels (Explicit intent): High
+    // Signal weights
     subscribedChannels.forEach(c => addWeight(c.name, 5.0));
-    
-    // - Shorts history (Implicit intent, short-term): Medium-High
-    //   Recently watched shorts have higher influence (simulating Recency bias)
     (shortsHistory || []).slice(0, 30).forEach((v, i) => {
         const recencyDecay = Math.exp(-i / 10);
         addWeight(v.title, 3.0 * recencyDecay);
         addWeight(v.channelName, 4.0 * recencyDecay);
     });
-
-    // - Watch history (Long-form, implicit): Medium
     watchHistory.slice(0, 20).forEach((v, i) => {
         const recencyDecay = Math.exp(-i / 10);
         addWeight(v.title, 1.5 * recencyDecay);
         addWeight(v.channelName, 2.0 * recencyDecay);
     });
 
-    const userMag = calculateMagnitude(userVector); // Pre-calculate magnitude for cosine similarity
+    const userMag = calculateMagnitude(userVector); 
 
-    // --- Candidate Generation ---
-    // Fetch a mix of Popular (Trending) and Collaborative (Search based on profile seeds)
+    // --- Candidate Generation (Two Pools) ---
+    
+    // Pool 1: Popular (Trending)
     const popularPromise = getRecommendedVideos().then(res => res.videos.filter(isShortVideo)).catch(() => []);
     
-    // Generate seeds from top keywords in User Vector
+    // Pool 2: Personalized (Search based)
     const topKeywords = [...userVector.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(e => e[0]);
     const seeds = topKeywords.length > 0 ? topKeywords.map(k => `${k} #shorts`) : ["Funny #shorts", "Trending #shorts"];
-
-    // Limit seeds to prevent excessive API calls
-    const limitedSeeds = seeds.slice(0, 3);
-    const candidatePromises = limitedSeeds.map(query => 
+    const limitedSeeds = seeds.slice(0, 2); // Less seeds needed as we prioritize popular
+    const personalizedPromise = Promise.all(limitedSeeds.map(query => 
         searchVideos(query, '1').then(res => [...res.videos, ...res.shorts].filter(isShortVideo)).catch(() => [])
-    );
+    )).then(results => results.flat());
 
-    const [popularShortsRaw, ...personalizedCandidatesNested] = await Promise.all([popularPromise, ...candidatePromises]);
-    const candidates = [...popularShortsRaw, ...personalizedCandidatesNested.flat()];
+    const [popularShortsRaw, personalizedShortsRaw] = await Promise.all([popularPromise, personalizedPromise]);
 
-    // --- Filtering & Ranking ---
+    // --- Filtering & Scoring ---
     const allSeenIds = new Set([
         ...(shortsHistory || []).map(v => v.id),
         ...hiddenVideos.map(v => v.id),
@@ -214,7 +212,7 @@ export const getXraiShorts = async (sources: RecommendationSource & { seenIds?: 
     const scoreVideo = (video: Video): number => {
         let score = 0;
         
-        // 1. Content Match (Dot Product / Cosine Similarity approximation)
+        // Content Match
         const vKeywords = [...extractKeywords(video.title), ...extractKeywords(video.channelName)];
         let dotProduct = 0;
         vKeywords.forEach(k => {
@@ -222,88 +220,83 @@ export const getXraiShorts = async (sources: RecommendationSource & { seenIds?: 
                 dotProduct += userVector.get(k)!;
             }
         });
-        // Normalize slightly to avoid just favoring long titles
         if (userMag > 0 && vKeywords.length > 0) {
             score += (dotProduct / (userMag * Math.sqrt(vKeywords.length))) * 100;
         }
 
-        // 2. Channel Affinity
-        // Boost if subscribed
+        // Channel Affinity
         if (subscribedChannels.some(c => c.id === video.channelId)) {
             score += 50; 
         }
 
-        // 3. Negative Signals (Hard Penalty)
+        // Negative Signals
         let negScore = 0;
         vKeywords.forEach(k => {
             if (negativeKeywords.has(k)) negScore += negativeKeywords.get(k)!;
         });
         score -= negScore * 20;
 
-        // 4. Random Noise (Exploration)
-        // Add a small random factor to prevent filter bubbles and static ordering
+        // Random Noise for Exploration
         score += Math.random() * 15;
 
         return score;
     };
 
-    const uniqueCandidates = new Map<string, Video>();
-    
-    candidates.forEach(v => {
-        // Hard Filters
-        if (allSeenIds.has(v.id)) return;
-        if (ngChannelIds.has(v.channelId)) return;
-        const fullText = `${v.title} ${v.channelName}`.toLowerCase();
-        if (ngKeywords.some(ng => fullText.includes(ng.toLowerCase()))) return;
+    const processCandidates = (candidates: Video[]): { video: Video, score: number }[] => {
+        const unique = new Map<string, Video>();
+        candidates.forEach(v => {
+            if (allSeenIds.has(v.id)) return;
+            if (ngChannelIds.has(v.channelId)) return;
+            const fullText = `${v.title} ${v.channelName}`.toLowerCase();
+            if (ngKeywords.some(ng => fullText.includes(ng.toLowerCase()))) return;
+            if (!unique.has(v.id)) unique.set(v.id, v);
+        });
 
-        // Deduplicate (Keep first seen or logic could be improved to keep higher quality metadata)
-        if (!uniqueCandidates.has(v.id)) {
-            uniqueCandidates.set(v.id, v);
-        }
-    });
+        return Array.from(unique.values()).map(v => ({
+            video: v,
+            score: scoreVideo(v)
+        })).sort((a, b) => b.score - a.score);
+    };
 
-    const scoredCandidates = Array.from(uniqueCandidates.values()).map(v => ({
-        video: v,
-        score: scoreVideo(v)
-    }));
+    const rankedPopular = processCandidates(popularShortsRaw);
+    const rankedPersonalized = processCandidates(personalizedShortsRaw);
 
-    // Sort by Score Descending
-    scoredCandidates.sort((a, b) => b.score - a.score);
-
-    // Apply Post-Ranking Rules (Diversity)
-    // Avoid same channel appearing consecutively
+    // --- Selection (85% / 15%) ---
     const finalFeed: Video[] = [];
     const channelCooldown = new Map<string, number>();
 
-    for (const item of scoredCandidates) {
-        if (item.score < -50) continue; // Drop very negative scores
+    const addVideoSafely = (item: { video: Video, score: number } | undefined) => {
+        if (!item) return;
+        if (item.score < -50) return;
 
         const cId = item.video.channelId;
         const cooldown = channelCooldown.get(cId) || 0;
         
         if (cooldown === 0) {
             finalFeed.push(item.video);
-            channelCooldown.set(cId, 3); // Must wait 3 videos before showing this channel again
-            
-            // Decrease cooldowns for others
+            channelCooldown.set(cId, 3);
+            // Decrease others
             for (const [key, val] of channelCooldown.entries()) {
                 if (key !== cId && val > 0) channelCooldown.set(key, val - 1);
             }
         }
+    };
+
+    // Fill Popular slots (Shuffle top results slightly to allow diversity)
+    const selectedPopular = shuffleArray(rankedPopular.slice(0, Math.max(50, targetPopularCount * 2))).slice(0, targetPopularCount);
+    selectedPopular.forEach(addVideoSafely);
+
+    // Fill Personalized slots
+    const selectedPersonalized = rankedPersonalized.slice(0, targetPersonalizedCount);
+    selectedPersonalized.forEach(addVideoSafely);
+
+    // If we haven't met the quota, backfill from remaining popular
+    if (finalFeed.length < BATCH_SIZE) {
+        const remainingNeeded = BATCH_SIZE - finalFeed.length;
+        const usedIds = new Set(finalFeed.map(v => v.id));
+        const backfill = rankedPopular.filter(item => !usedIds.has(item.video.id)).slice(0, remainingNeeded);
+        backfill.forEach(addVideoSafely);
     }
 
-    // Fallback if filtering removed too many
-    if (finalFeed.length < 5 && popularShortsRaw.length > 0) {
-        const fallbacks = popularShortsRaw.filter(v => !allSeenIds.has(v.id)).slice(0, 10);
-        // Combine ensuring unique IDs
-        const existingIds = new Set(finalFeed.map(v => v.id));
-        for (const fb of fallbacks) {
-            if (!existingIds.has(fb.id)) {
-                finalFeed.push(fb);
-                existingIds.add(fb.id);
-            }
-        }
-    }
-
-    return finalFeed;
+    return shuffleArray(finalFeed); // Shuffle the final mix so personalized items aren't always at the bottom
 };

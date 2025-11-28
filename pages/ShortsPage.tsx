@@ -49,6 +49,34 @@ const ShortsPage: React.FC = () => {
         }
     }, []);
 
+    const fetchMoreShorts = useCallback(async () => {
+        if (isFetchingMore) return;
+        setIsFetchingMore(true);
+        try {
+            // Only fetch more for recommendations. Channel lists usually grab the top ~50.
+            if (!context || context.type !== 'channel') {
+                const seenIds = videos.map(v => v.id);
+                const shorts = await getXraiShorts({ 
+                    searchHistory, watchHistory, shortsHistory, subscribedChannels, 
+                    ngKeywords, ngChannels, hiddenVideos, negativeKeywords, 
+                    page: Math.floor(videos.length / 20) + 1,
+                    seenIds
+                });
+                
+                // Add new videos only if they aren't already in the list
+                setVideos(prev => {
+                    const existingIds = new Set(prev.map(p => p.id));
+                    const uniqueNewShorts = shorts.filter(s => !existingIds.has(s.id));
+                    return [...prev, ...uniqueNewShorts];
+                });
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsFetchingMore(false);
+        }
+    }, [isFetchingMore, context, videos, searchHistory, watchHistory, shortsHistory, subscribedChannels, ngKeywords, ngChannels, hiddenVideos, negativeKeywords]);
+
     // Initial Data Fetch Logic
     useEffect(() => {
         const init = async () => {
@@ -123,8 +151,22 @@ const ShortsPage: React.FC = () => {
             }
         };
 
-        init();
-    }, [videoId, context, searchHistory, watchHistory, shortsHistory, subscribedChannels, ngKeywords, ngChannels, hiddenVideos, negativeKeywords]);
+        // Only run init if videos are empty (initial load)
+        if (videos.length === 0) {
+            init();
+        }
+    }, [videoId, context, searchHistory, watchHistory, shortsHistory, subscribedChannels, ngKeywords, ngChannels, hiddenVideos, negativeKeywords]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // --- Pre-fetching Logic (Stock 10 videos) ---
+    useEffect(() => {
+        if (videos.length > 0 && context?.type !== 'channel') {
+            const remainingVideos = videos.length - 1 - currentIndex;
+            if (remainingVideos < 10 && !isFetchingMore && !isLoading) {
+                console.log(`Stock low (${remainingVideos} remaining). Fetching more...`);
+                fetchMoreShorts();
+            }
+        }
+    }, [currentIndex, videos.length, isFetchingMore, isLoading, context, fetchMoreShorts]);
 
     // Update URL when index changes (to allow deep linking/sharing current video)
     useEffect(() => {
@@ -138,14 +180,11 @@ const ShortsPage: React.FC = () => {
             const nextIndex = prev < videos.length - 1 ? prev + 1 : prev;
             if (prev !== nextIndex) {
                 setTimeout(postPlayCommand, 150);
-            } else if (!isFetchingMore && context?.type !== 'channel') {
-                // Try to load more if at end and not in channel mode
-                // (Channel mode usually gets all at once, or we need pagination support there too)
-                fetchMoreShorts();
             }
+            // Fetching logic is now handled by the useEffect above
             return nextIndex;
         });
-    }, [videos.length, postPlayCommand, isFetchingMore, context]);
+    }, [videos.length, postPlayCommand]);
 
     const handlePrev = useCallback(() => {
         setCurrentIndex(prev => {
@@ -156,28 +195,6 @@ const ShortsPage: React.FC = () => {
             return prevIndex;
         });
     }, [postPlayCommand]);
-
-    const fetchMoreShorts = async () => {
-        if (isFetchingMore) return;
-        setIsFetchingMore(true);
-        try {
-            // Only fetch more for recommendations. Channel lists usually grab the top ~50.
-            if (!context || context.type !== 'channel') {
-                const seenIds = videos.map(v => v.id);
-                const shorts = await getXraiShorts({ 
-                    searchHistory, watchHistory, shortsHistory, subscribedChannels, 
-                    ngKeywords, ngChannels, hiddenVideos, negativeKeywords, 
-                    page: Math.floor(videos.length / 20) + 1,
-                    seenIds
-                });
-                setVideos(prev => [...prev, ...shorts.filter(s => !prev.some(p => p.id === s.id))]);
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setIsFetchingMore(false);
-        }
-    };
     
     // Reset comments when video changes
     useEffect(() => {
@@ -202,12 +219,13 @@ const ShortsPage: React.FC = () => {
         if (!video) return;
 
         const durationSec = parseDuration(video.isoDuration, video.duration);
-        if (durationSec === 0) return;
+        
+        // Save to history after 50% watch time or 15 seconds, whichever is shorter/safer
+        const timeoutMs = durationSec > 0 ? (durationSec * 1000) / 2 : 10000;
 
-        // Save to history after 50% watch time
         const historyTimer = setTimeout(() => {
             addShortToHistory(video);
-        }, (durationSec * 1000) / 2);
+        }, timeoutMs);
 
         return () => {
             clearTimeout(historyTimer);
