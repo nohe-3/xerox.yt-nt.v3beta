@@ -363,9 +363,6 @@ app.get('/api/playlist', async (req, res) => {
   }
 });
 
-// -------------------------------------------------------------------
-// Shorts API (/api/shorts)
-// -------------------------------------------------------------------
 app.get('/api/shorts', async (req, res) => {
   try {
     const youtube = await createYoutube();
@@ -374,29 +371,28 @@ app.get('/api/shorts', async (req, res) => {
 
     const channel = await youtube.getChannel(id);
 
-    // Shorts タブを探す
-    const shortsTab = channel?.tabs?.find(t => t.title === "Shorts");
+    // Shorts タブ取得（内部的には Tab オブジェクト）
+    const shortsTab = channel?.tabs?.find(t => t.title?.toLowerCase().includes("short"));
+
     if (!shortsTab) {
-      return res.status(200).json({ shorts: [] });
+      return res.status(200).json({
+        shorts: [],
+        reason: "Shorts tab not found",
+        tabs: channel.tabs?.map(t => t.title) ?? []
+      });
     }
 
-    // Shorts を読み込む
-    const feed = await shortsTab.getVideos();
+    // Shorts タブの中身を「加工せず」そのまま返す
+    const raw = await shortsTab.getVideos();
 
-    let shorts = [];
-    if (feed.videos) {
-      shorts = feed.videos;
-    } else if (feed.items) {
-      shorts = feed.items;
-    }
+    res.status(200).json(raw);
 
-    res.status(200).json({ shorts });
-    
   } catch (err) {
-    console.error('Error in /api/shorts:', err);
+    console.error("Error in /api/shorts:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 // -------------------------------------------------------------------

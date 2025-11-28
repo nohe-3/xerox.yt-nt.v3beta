@@ -7,7 +7,7 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import { useSearchHistory } from '../contexts/SearchHistoryContext';
 import { useHistory } from '../contexts/HistoryContext';
 import { usePreference } from '../contexts/PreferenceContext';
-import { LikeIcon, CommentIcon, CloseIcon, BlockIcon, TrashIcon, RepeatIcon } from '../components/icons/Icons';
+import { LikeIcon, CommentIcon, CloseIcon, BlockIcon, TrashIcon } from '../components/icons/Icons';
 import CommentComponent from '../components/Comment';
 import { useTheme } from '../hooks/useTheme';
 
@@ -24,7 +24,6 @@ const ShortsPage: React.FC = () => {
     const [showComments, setShowComments] = useState(false);
     const [comments, setComments] = useState<Comment[]>([]);
     const [areCommentsLoading, setAreCommentsLoading] = useState(false);
-    const [isAutoplayOn, setIsAutoplayOn] = useState(false);
 
     const { theme } = useTheme();
     const { subscribedChannels } = useSubscription();
@@ -120,17 +119,15 @@ const ShortsPage: React.FC = () => {
     }, [currentIndex]);
     
     const extendedParams = useMemo(() => {
-        if (!playerParams) return '';
+        const video = videos[currentIndex];
+        if (!playerParams || !video) return '';
+
+        // Ensure autoplay is on, and add loop and playlist params for single video loop
         let params = playerParams.replace(/&?autoplay=[01]/g, "") + "&playsinline=1&autoplay=1&enablejsapi=1";
+        params += `&loop=1&playlist=${video.id}`;
         
-        if (isAutoplayOn && videos.length > 0) {
-            const playlistIds = videos.slice(currentIndex).map(v => v.id).join(',');
-            if (playlistIds) {
-                params += `&playlist=${playlistIds}`;
-            }
-        }
         return params;
-    }, [playerParams, isAutoplayOn, videos, currentIndex]);
+    }, [playerParams, videos, currentIndex]);
 
     // History saving logic
     useEffect(() => {
@@ -241,9 +238,6 @@ const ShortsPage: React.FC = () => {
                         </button>
                         <button onClick={handleBlockChannel} className="flex flex-col items-center p-2 rounded-full bg-yt-light/50 dark:bg-yt-light-black/50 hover:bg-yt-light dark:hover:bg-yt-light-black backdrop-blur-sm transition-all group">
                             <BlockIcon /><span className="text-xs font-semibold text-black dark:text-white mt-1">非表示</span>
-                        </button>
-                        <button onClick={() => setIsAutoplayOn(p => !p)} className={`flex flex-col items-center p-2 rounded-full bg-yt-light/50 dark:bg-yt-light-black/50 backdrop-blur-sm transition-all group ${isAutoplayOn ? 'bg-yt-blue/80' : 'hover:bg-yt-light dark:hover:bg-yt-light-black'}`}>
-                            <RepeatIcon className={isAutoplayOn ? 'fill-current text-white' : ''} /><span className={`text-xs font-semibold mt-1 ${isAutoplayOn ? 'text-white' : 'text-black dark:text-white'}`}>連続再生</span>
                         </button>
                     </div>
 
