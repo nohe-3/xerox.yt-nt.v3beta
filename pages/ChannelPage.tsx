@@ -218,20 +218,16 @@ const ChannelPage: React.FC = () => {
                                 ></iframe>
                             )}
                         </div>
-                        <div className="flex-1 py-1 min-w-0">
+                        <div className="flex-1 py-1 min-w-0 flex flex-col justify-center">
                             <Link to={`/watch/${homeData.topVideo.videoId}`}>
-                                <h3 className="text-base md:text-xl font-bold mb-2 line-clamp-2 leading-snug">{homeData.topVideo.title}</h3>
+                                <h3 className="text-base md:text-2xl font-bold mb-2 line-clamp-2 leading-snug">{homeData.topVideo.title}</h3>
                             </Link>
                             
-                            <div className="flex items-center text-xs md:text-sm text-yt-light-gray font-medium mb-3">
+                            <div className="flex items-center text-sm md:text-base text-yt-light-gray font-medium">
                                 <span>{homeData.topVideo.viewCount}</span>
                                 <span className="mx-1">•</span>
                                 <span>{homeData.topVideo.published}</span>
                             </div>
-                            
-                            <p className="text-sm text-yt-light-gray line-clamp-4 whitespace-pre-wrap leading-relaxed hidden md:block">
-                                {homeData.topVideo.description}
-                            </p>
                         </div>
                     </div>
                 )}
