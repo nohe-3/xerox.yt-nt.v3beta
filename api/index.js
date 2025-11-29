@@ -365,7 +365,7 @@ app.get('/api/playlist', async (req, res) => {
 
 // -------------------------------------------------------------------
 // おすすめショート動画 API (/api/fshorts?page=x)
-// 日本向け・10本ずつ・page対応
+// 日本向け・Shortsタブから取得・10本ずつ
 // -------------------------------------------------------------------
 app.get('/api/fshorts', async (req, res) => {
   try {
@@ -375,44 +375,53 @@ app.get('/api/fshorts', async (req, res) => {
     const targetPage = parseInt(page);
     const PAGE_SIZE = 10;
 
+    // まずホーム取得
     let home = await youtube.getHomeFeed();
-    let shorts = [];
 
-    // まず1ページ目（最初のブロック）からShorts抽出
-    if (home.videos) {
-      for (const v of home.videos) {
-        if (v.is_short) shorts.push(v);
-      }
+    // Shorts タブ取得（最重要）
+    const shortsTab = home.getTabByName("Shorts");
+    if (!shortsTab) {
+      return res.status(200).json({
+        page: targetPage,
+        shorts: [],
+        hasMore: false,
+        reason: "Shorts tab not found"
+      });
     }
 
-    // 必要なShorts数がそろうまで続きのページを読み込む
-    let attempts = 0;
+    // Shortsタブの内容はここ
+    let current = shortsTab;
+    let shorts = [];
+
+    // contents → 正規パス
+    if (current.contents?.[0]?.contents) {
+      shorts.push(...current.contents[0].contents.filter(v => v.video_id));
+    }
+
+    // ページ x まで進める
     const REQUIRED = targetPage * PAGE_SIZE;
+    let attempts = 0;
 
-    while (shorts.length < REQUIRED && home.has_continuation && attempts < 10) {
-      home = await home.getContinuation();
+    while (shorts.length < REQUIRED && current.has_continuation && attempts < 10) {
+      current = await current.getContinuation();
 
-      if (home.videos) {
-        for (const v of home.videos) {
-          if (v.is_short) shorts.push(v);
-        }
+      if (current?.contents?.[0]?.contents) {
+        const list = current.contents[0].contents.filter(v => v.video_id);
+        shorts.push(...list);
       }
 
       attempts++;
     }
 
-    // ページ分のデータを切り出す
     const start = (targetPage - 1) * PAGE_SIZE;
     const end = start + PAGE_SIZE;
 
     const pagedShorts = shorts.slice(start, end);
 
-    const hasMore = shorts.length > end || home.has_continuation;
-
     res.status(200).json({
       page: targetPage,
       shorts: pagedShorts,
-      hasMore
+      hasMore: shorts.length > end || current.has_continuation
     });
 
   } catch (err) {
@@ -420,6 +429,7 @@ app.get('/api/fshorts', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.get('/api/shorts', async (req, res) => {
   try {
