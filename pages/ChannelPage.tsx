@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // FIX: Use named imports for react-router-dom components and hooks.
 import { useParams, Link } from 'react-router-dom';
-import { getChannelDetails, getChannelVideos, getChannelHome, mapHomeVideoToVideo, getChannelShorts, getPlayerConfig } from '../utils/api';
+import { getChannelDetails, getChannelVideos, getChannelHome, mapHomeVideoToVideo, getChannelShorts } from '../utils/api';
 import type { ChannelDetails, Video, Channel, ChannelHomeData } from '../types';
 import VideoGrid from '../components/VideoGrid';
 import VideoCard from '../components/VideoCard';
@@ -25,7 +25,6 @@ const ChannelPage: React.FC = () => {
     const [homeData, setHomeData] = useState<ChannelHomeData | null>(null);
     const [videos, setVideos] = useState<Video[]>([]);
     const [shorts, setShorts] = useState<Video[]>([]);
-    const [playerParams, setPlayerParams] = useState<string | null>(null);
     
     const [videosPageToken, setVideosPageToken] = useState<string | undefined>('1');
     const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -48,8 +47,6 @@ const ChannelPage: React.FC = () => {
             try {
                 const details = await getChannelDetails(channelId);
                 setChannelDetails(details);
-                const params = await getPlayerConfig();
-                setPlayerParams(params);
             } catch (err: any) {
                 setError(err.message || 'チャンネルデータの読み込みに失敗しました。');
                 console.error(err);
@@ -205,44 +202,33 @@ const ChannelPage: React.FC = () => {
         return (
             <div className="flex flex-col gap-6 pb-10">
                 {homeData.topVideo && (
-                    <div className="flex flex-col md:flex-row gap-4 md:gap-6 border-b border-yt-spec-light-20 dark:border-yt-spec-20 pb-6">
-                         <div className="w-full md:w-[360px] lg:w-[420px] aspect-video rounded-xl overflow-hidden flex-shrink-0 bg-yt-black shadow-lg">
-                            {playerParams && (
-                                <iframe 
-                                    src={`https://www.youtubeeducation.com/embed/${homeData.topVideo.videoId}${playerParams}`}
-                                    title={homeData.topVideo.title} 
-                                    frameBorder="0" 
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                                    allowFullScreen 
-                                    className="w-full h-full"
-                                ></iframe>
-                            )}
-                        </div>
-                        <div className="flex-1 py-1 md:py-2 min-w-0">
-                            <Link to={`/watch/${homeData.topVideo.videoId}`}>
-                                <h3 className="text-base md:text-xl font-bold mb-1 md:mb-2 line-clamp-2 leading-snug">{homeData.topVideo.title}</h3>
-                            </Link>
-                            
-                            <div className="flex items-center mb-2">
-                                {channelDetails && (
-                                    <Link to={`/channel/${channelDetails.id}`} className="text-black dark:text-white font-semibold hover:text-yt-icon text-sm md:text-base">
-                                        {channelDetails.name}
-                                    </Link>
-                                )}
+                    <div className="border-b border-yt-spec-light-20 dark:border-yt-spec-20 pb-6 mb-6">
+                        <Link to={`/watch/${homeData.topVideo.videoId}`} className="flex flex-col md:flex-row gap-4 md:gap-6 group">
+                            <div className="w-full md:w-[360px] lg:w-[480px] aspect-video rounded-xl overflow-hidden flex-shrink-0 bg-yt-black shadow-lg">
+                                <img src={homeData.topVideo.thumbnail} alt={homeData.topVideo.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                             </div>
-
-                            <div className="flex items-center text-xs md:text-sm text-yt-light-gray font-medium mb-3">
-                                <span>{homeData.topVideo.viewCount}</span>
-                                <span className="mx-1">•</span>
-                                <span>{homeData.topVideo.published}</span>
+                            <div className="flex-1 py-1 md:py-2 min-w-0">
+                                <h3 className="text-lg md:text-xl font-bold mb-2 line-clamp-2 leading-tight group-hover:opacity-80">{homeData.topVideo.title}</h3>
+                                
+                                <div className="flex flex-col gap-1 text-sm md:text-base text-yt-light-gray font-medium mb-4">
+                                    <div>
+                                        <span className="font-semibold text-black dark:text-white mr-2">再生回数:</span>
+                                        <span>{homeData.topVideo.viewCount}</span>
+                                    </div>
+                                    <div>
+                                        <span className="font-semibold text-black dark:text-white mr-2">投稿日:</span>
+                                        <span>{homeData.topVideo.published}</span>
+                                    </div>
+                                </div>
+                                
+                                <p className="text-sm text-yt-light-gray whitespace-pre-line line-clamp-4 hidden md:block">
+                                    {homeData.topVideo.description?.replace(/<br\s*\/?>/gi, '\n')}
+                                </p>
                             </div>
-                            
-                            <p className="text-sm text-yt-light-gray line-clamp-2 whitespace-pre-line hidden md:block">
-                                {homeData.topVideo.description?.replace(/<br\s*\/?>/gi, '\n')}
-                            </p>
-                        </div>
+                        </Link>
                     </div>
                 )}
+
 
                 {homeData.playlists
                     .filter(playlist => 
@@ -285,16 +271,12 @@ const ChannelPage: React.FC = () => {
                 </div>
                 <div className="flex-1 text-center md:text-left min-w-0">
                     <h1 className="text-2xl md:text-4xl font-bold mb-1 md:mb-2 tracking-tight">{channelDetails.name}</h1>
-                    <div className="text-yt-light-gray text-sm md:text-base mb-3 flex flex-wrap justify-center md:justify-start gap-x-2">
-                         <span>{channelDetails.handle}</span>
-                         <span>•</span>
-                         <span>登録者数 {channelDetails.subscriberCount}</span>
-                         <span>•</span>
-                         <span>動画 {channelDetails.videoCount} 本</span>
+                    <div className="flex flex-col items-center md:items-start text-yt-light-gray text-sm md:text-base mb-3 gap-1">
+                        <span>チャンネル登録者数 {channelDetails.subscriberCount}</span>
+                        <p className="text-sm line-clamp-1 cursor-pointer hover:text-black dark:hover:text-white" onClick={() => alert(channelDetails.description)}>
+                            {channelDetails.description}
+                        </p>
                     </div>
-                    <p className="text-yt-light-gray text-sm line-clamp-1 mb-4 max-w-2xl cursor-pointer mx-auto md:mx-0" onClick={() => alert(channelDetails.description)}>
-                        {channelDetails.description}
-                    </p>
                     <div className="flex items-center justify-center md:justify-start gap-3">
                         <button 
                             onClick={handleSubscriptionToggle} 
