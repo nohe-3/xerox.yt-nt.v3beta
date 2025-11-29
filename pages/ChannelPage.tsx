@@ -299,14 +299,18 @@ const ChannelPage: React.FC = () => {
                 <div className="w-full h-32 md:h-48 lg:h-56 bg-center bg-cover rounded-b-xl shadow-inner" style={{ backgroundImage: `url(${channelDetails.bannerUrl})` }}></div>
             )}
             <div className="max-w-[1300px] mx-auto px-4 sm:px-6">
-                <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 -mt-12 sm:-mt-16 relative z-10">
+                <div className={`flex flex-col sm:flex-row items-center sm:items-end gap-4 ${channelDetails.bannerUrl ? '-mt-12 sm:-mt-16' : 'pt-4'} relative z-10`}>
                     <img src={channelDetails.avatarUrl} alt={channelDetails.name} className="w-28 h-28 sm:w-36 sm:h-36 rounded-full border-4 border-yt-white dark:border-yt-black object-cover bg-yt-light dark:bg-yt-dark-gray"/>
                     <div className="flex flex-col items-center sm:items-start flex-1 py-4">
                         <h1 className="text-2xl sm:text-3xl font-bold">{channelDetails.name}</h1>
                         <div className="flex items-center space-x-3 text-sm text-yt-light-gray mt-1">
                             {channelDetails.handle && <span>{channelDetails.handle}</span>}
-                            <span>チャンネル登録者数 {channelDetails.subscriberCount}</span>
-                            <span>{channelDetails.videoCount}本の動画</span>
+                            {channelDetails.subscriberCount && channelDetails.subscriberCount !== '非公開' && (
+                                <span>チャンネル登録者数 {channelDetails.subscriberCount}</span>
+                            )}
+                            {channelDetails.videoCount > 0 && (
+                                <span>{channelDetails.videoCount.toLocaleString()}本の動画</span>
+                            )}
                         </div>
                         <p className="text-sm text-yt-light-gray mt-2 line-clamp-2 text-center sm:text-left">
                             {channelDetails.description}
