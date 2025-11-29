@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 // FIX: Use named imports for react-router-dom components and hooks.
 import { useNavigate, Link } from 'react-router-dom';
-import { MenuIcon, YouTubeLogo, SearchIcon, SettingsIcon, SaveIcon, DownloadIcon, TrashIcon, HistoryIcon, CheckIcon, SunIcon, MoonIcon, LightbulbIcon } from './icons/Icons';
+import { MenuIcon, SearchIcon, SettingsIcon, SaveIcon, DownloadIcon, TrashIcon, HistoryIcon, CheckIcon, SunIcon, MoonIcon, LightbulbIcon, XeroxLogo } from './icons/Icons';
 import { useSearchHistory } from '../contexts/SearchHistoryContext';
 import { usePreference } from '../contexts/PreferenceContext';
 import { useHistory } from '../contexts/HistoryContext';
@@ -120,9 +121,9 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, openHistoryDeletionModal
         <button onClick={toggleSidebar} className="p-2 rounded-full hover:bg-yt-spec-light-10 dark:hover:bg-yt-spec-10 active:scale-95 transform transition-transform duration-150 hidden md:block" aria-label="サイドバーの切り替え">
           <MenuIcon />
         </button>
-        <Link to="/" className="flex items-center" aria-label="YouTubeホーム">
-            <YouTubeLogo />
-            <div className="hidden sm:flex items-baseline ml-1.5">
+        <Link to="/" className="flex items-center gap-2" aria-label="YouTubeホーム">
+            <XeroxLogo className="h-8 w-auto" />
+            <div className="hidden sm:flex items-baseline">
                 <span className="text-black dark:text-white text-xl font-bold tracking-tighter font-sans">XeroxYT-NTv3β</span>
             </div>
         </Link>

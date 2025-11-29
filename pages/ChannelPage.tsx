@@ -25,22 +25,14 @@ const ChannelPage: React.FC = () => {
     const [homeData, setHomeData] = useState<ChannelHomeData | null>(null);
     const [videos, setVideos] = useState<Video[]>([]);
     const [shorts, setShorts] = useState<Video[]>([]);
+    const [playerParams, setPlayerParams] = useState<string | null>(null);
     
     const [videosPageToken, setVideosPageToken] = useState<string | undefined>('1');
     const [isFetchingMore, setIsFetchingMore] = useState(false);
     const [isTabLoading, setIsTabLoading] = useState(false);
     
-    const [playerParams, setPlayerParams] = useState<string | null>(null);
-
     const { isSubscribed, subscribe, unsubscribe } = useSubscription();
     const { addNgChannel, removeNgChannel, isNgChannel } = usePreference();
-    
-    useEffect(() => {
-        const fetchPlayerParams = async () => {
-            setPlayerParams(await getPlayerConfig());
-        };
-        fetchPlayerParams();
-    }, []);
 
     useEffect(() => {
         const loadInitialDetails = async () => {
@@ -56,6 +48,8 @@ const ChannelPage: React.FC = () => {
             try {
                 const details = await getChannelDetails(channelId);
                 setChannelDetails(details);
+                const params = await getPlayerConfig();
+                setPlayerParams(params);
             } catch (err: any) {
                 setError(err.message || 'チャンネルデータの読み込みに失敗しました。');
                 console.error(err);
@@ -211,142 +205,158 @@ const ChannelPage: React.FC = () => {
         return (
             <div className="flex flex-col gap-6 pb-10">
                 {homeData.topVideo && (
-                    <div className="border-b border-yt-spec-light-20 dark:border-yt-spec-20 pb-8 mb-8">
-                        <div className="flex flex-col lg:flex-row gap-6">
-                            {/* Player on the left */}
-                            <div className="lg:w-1/2 xl:w-[48%] flex-shrink-0">
-                                <div className="aspect-video rounded-2xl overflow-hidden bg-yt-dark-gray shadow-lg">
-                                    {playerParams ? (
-                                        <iframe
-                                            src={`https://www.youtubeeducation.com/embed/${homeData.topVideo.videoId}${playerParams}`}
-                                            title={homeData.topVideo.title}
-                                            frameBorder="0"
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                            allowFullScreen
-                                            className="w-full h-full"
-                                        ></iframe>
-                                    ) : (
-                                        <div className="w-full h-full bg-yt-dark-gray animate-pulse"></div>
-                                    )}
-                                </div>
-                            </div>
-                            {/* Details on the right */}
-                            <div className="flex flex-col justify-center">
-                                <Link to={`/watch/${homeData.topVideo.videoId}`} className="block mb-2">
-                                    <h2 className="text-xl font-bold text-black dark:text-white line-clamp-2 hover:opacity-80 transition-opacity">
-                                        {homeData.topVideo.title}
-                                    </h2>
-                                </Link>
-                                <div className="text-sm text-yt-light-gray mb-4 space-y-1.5">
-                                    {homeData.topVideo.viewCount && <p>再生回数: {homeData.topVideo.viewCount}</p>}
-                                    {homeData.topVideo.published && <p>投稿日: {homeData.topVideo.published}</p>}
-                                </div>
-                                {homeData.topVideo.description && (
-                                    <p className="text-sm text-yt-light-gray line-clamp-4">
-                                        {homeData.topVideo.description}
-                                    </p>
+                    <div className="flex flex-col md:flex-row gap-4 md:gap-6 border-b border-yt-spec-light-20 dark:border-yt-spec-20 pb-6">
+                         <div className="w-full md:w-[360px] lg:w-[420px] aspect-video rounded-xl overflow-hidden flex-shrink-0 bg-yt-black shadow-lg">
+                            {playerParams && (
+                                <iframe 
+                                    src={`https://www.youtubeeducation.com/embed/${homeData.topVideo.videoId}${playerParams}`}
+                                    title={homeData.topVideo.title} 
+                                    frameBorder="0" 
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                    allowFullScreen 
+                                    className="w-full h-full"
+                                ></iframe>
+                            )}
+                        </div>
+                        <div className="flex-1 py-1 md:py-2 min-w-0">
+                            <Link to={`/watch/${homeData.topVideo.videoId}`}>
+                                <h3 className="text-base md:text-xl font-bold mb-1 md:mb-2 line-clamp-2 leading-snug">{homeData.topVideo.title}</h3>
+                            </Link>
+                            
+                            <div className="flex items-center mb-2">
+                                {channelDetails && (
+                                    <Link to={`/channel/${channelDetails.id}`} className="text-black dark:text-white font-semibold hover:text-yt-icon text-sm md:text-base">
+                                        {channelDetails.name}
+                                    </Link>
                                 )}
                             </div>
+
+                            <div className="flex items-center text-xs md:text-sm text-yt-light-gray font-medium mb-3">
+                                <span>{homeData.topVideo.viewCount}</span>
+                                <span className="mx-1">•</span>
+                                <span>{homeData.topVideo.published}</span>
+                            </div>
+                            
+                            <p className="text-sm text-yt-light-gray line-clamp-2 whitespace-pre-line hidden md:block">
+                                {homeData.topVideo.description?.replace(/<br\s*\/?>/gi, '\n')}
+                            </p>
                         </div>
                     </div>
                 )}
-                {homeData.playlists.map((playlist) => {
-                    const videos = playlist.items.map(item => mapHomeVideoToVideo(item, channelDetails));
-                    return (
-                        <div key={playlist.playlistId}>
-                            <h3 className="text-xl font-bold mb-4">{playlist.title}</h3>
-                            <HorizontalScrollContainer>
-                                {videos.map(video => (
-                                    <div key={video.id} className="w-64 flex-shrink-0">
-                                        <VideoCard video={video} hideChannelInfo={true} />
-                                    </div>
-                                ))}
-                            </HorizontalScrollContainer>
-                        </div>
+
+                {homeData.playlists
+                    .filter(playlist => 
+                        playlist.playlistId && 
+                        playlist.items && 
+                        playlist.items.length > 0 &&
+                        !playlist.title.includes('リリース') && 
+                        !playlist.title.includes('Releases')
                     )
-                })}
+                    .map((playlist, index) => (
+                    <div key={`${playlist.playlistId}-${index}`}>
+                        <div className="flex items-center justify-between mb-2 md:mb-4">
+                            <h3 className="text-lg md:text-xl font-bold">{playlist.title}</h3>
+                        </div>
+                        <HorizontalScrollContainer>
+                            {playlist.items.map(video => (
+                                <div key={video.videoId} className="w-44 md:w-56 flex-shrink-0">
+                                    <VideoCard video={mapHomeVideoToVideo(video, channelDetails)} hideChannelInfo />
+                                </div>
+                            ))}
+                        </HorizontalScrollContainer>
+                         <hr className="mt-4 md:mt-6 border-yt-spec-light-20 dark:border-yt-spec-20" />
+                    </div>
+                ))}
             </div>
         );
     };
 
-    const renderVideosTab = () => {
-         if (isTabLoading && videos.length === 0) return <div className="text-center p-8">読み込み中...</div>;
-         return (
-             <div className="pb-10">
-                 <VideoGrid videos={videos} isLoading={false} hideChannelInfo={true} />
-                 {isFetchingMore && <div className="text-center p-4">さらに読み込み中...</div>}
-                 <div ref={lastElementRef} className="h-10" />
-             </div>
-         );
-    }
-    
-    const renderShortsTab = () => {
-         if (isTabLoading && shorts.length === 0) return <div className="text-center p-8">読み込み中...</div>;
-         if (shorts.length === 0) return <div className="text-center p-8 text-yt-light-gray">ショート動画はありません。</div>;
-         
-         return (
-             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-x-4 gap-y-8 pb-10">
-                {shorts.map(short => (
-                    <ShortsCard key={short.id} video={short} context={{ type: 'channel', channelId: channelId }}/>
-                ))}
-             </div>
-         );
-    };
-
     return (
-        <div>
+        <div className="max-w-[1750px] mx-auto px-4 sm:px-6">
             {channelDetails.bannerUrl && (
-                <div className="w-full h-32 md:h-48 lg:h-56 bg-center bg-cover rounded-b-xl shadow-inner" style={{ backgroundImage: `url(${channelDetails.bannerUrl})` }}></div>
+                <div className="w-full aspect-[6/1] md:aspect-[6/1.2] lg:aspect-[6.2/1] rounded-xl overflow-hidden mb-6 shadow-md">
+                    <img src={channelDetails.bannerUrl} alt="Channel Banner" className="w-full h-full object-cover" />
+                </div>
             )}
-            <div className="max-w-[1300px] mx-auto px-4 sm:px-6">
-                <div className={`flex flex-col sm:flex-row items-center sm:items-end gap-4 ${channelDetails.bannerUrl ? '-mt-12 sm:-mt-16' : 'pt-4'} relative z-10`}>
-                    <img src={channelDetails.avatarUrl} alt={channelDetails.name} className="w-28 h-28 sm:w-36 sm:h-36 rounded-full border-4 border-yt-white dark:border-yt-black object-cover bg-yt-light dark:bg-yt-dark-gray"/>
-                    <div className="flex flex-col items-center sm:items-start flex-1 py-4">
-                        <h1 className="text-2xl sm:text-3xl font-bold">{channelDetails.name}</h1>
-                        <div className="flex items-center space-x-3 text-sm text-yt-light-gray mt-1">
-                            {channelDetails.handle && <span>{channelDetails.handle}</span>}
-                            {channelDetails.subscriberCount && channelDetails.subscriberCount !== '非公開' && (
-                                <span>チャンネル登録者数 {channelDetails.subscriberCount}</span>
-                            )}
-                            {channelDetails.videoCount > 0 && (
-                                <span>{channelDetails.videoCount.toLocaleString()}本の動画</span>
-                            )}
-                        </div>
-                        <p className="text-sm text-yt-light-gray mt-2 line-clamp-2 text-center sm:text-left">
-                            {channelDetails.description}
-                        </p>
+
+            <div className="flex flex-col md:flex-row items-center md:items-start gap-4 md:gap-6 mb-4 md:mb-6">
+                <div className="flex-shrink-0">
+                    <img src={channelDetails.avatarUrl} alt={channelDetails.name} className="w-20 h-20 md:w-32 md:h-32 rounded-full object-cover border border-yt-spec-light-20 dark:border-yt-spec-20 shadow-lg" />
+                </div>
+                <div className="flex-1 text-center md:text-left min-w-0">
+                    <h1 className="text-2xl md:text-4xl font-bold mb-1 md:mb-2 tracking-tight">{channelDetails.name}</h1>
+                    <div className="text-yt-light-gray text-sm md:text-base mb-3 flex flex-wrap justify-center md:justify-start gap-x-2">
+                         <span>{channelDetails.handle}</span>
+                         <span>•</span>
+                         <span>登録者数 {channelDetails.subscriberCount}</span>
+                         <span>•</span>
+                         <span>動画 {channelDetails.videoCount} 本</span>
                     </div>
-                    <div className="flex-shrink-0 flex items-center gap-2 pb-2">
+                    <p className="text-yt-light-gray text-sm line-clamp-1 mb-4 max-w-2xl cursor-pointer mx-auto md:mx-0" onClick={() => alert(channelDetails.description)}>
+                        {channelDetails.description}
+                    </p>
+                    <div className="flex items-center justify-center md:justify-start gap-3">
                         <button 
-                            onClick={handleSubscriptionToggle}
-                            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${subscribed ? 'bg-yt-light dark:bg-yt-dark-gray hover:bg-gray-200 dark:hover:bg-gray-700' : 'bg-black dark:bg-white text-white dark:text-black hover:opacity-90'}`}
+                            onClick={handleSubscriptionToggle} 
+                            className={`px-6 py-2 rounded-full text-sm font-semibold transition-colors ${
+                                subscribed 
+                                ? 'bg-yt-light dark:bg-[#272727] text-black dark:text-white hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f]' 
+                                : 'bg-black dark:bg-white text-white dark:text-black hover:opacity-90'
+                            }`}
                         >
                             {subscribed ? '登録済み' : 'チャンネル登録'}
                         </button>
+
                         <button
                             onClick={handleBlockToggle}
-                            className={`p-2 rounded-full transition-colors ${blocked ? 'bg-red-500 text-white' : 'bg-yt-light dark:bg-yt-dark-gray hover:bg-gray-200 dark:hover:bg-gray-700'}`}
-                            title={blocked ? 'チャンネルのブロックを解除' : 'チャンネルをブロック'}
+                            className={`p-2 rounded-full transition-colors ${blocked ? 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-white' : 'bg-yt-light dark:bg-[#272727] text-black dark:text-white hover:bg-red-100 hover:text-red-600'}`}
+                            title={blocked ? 'ブロック解除' : 'このチャンネルをブロック'}
                         >
                             <BlockIcon />
                         </button>
                     </div>
                 </div>
-
-                <div className="mt-4 border-b border-yt-spec-light-20 dark:border-yt-spec-20">
-                    <div className="flex items-center -mb-px overflow-x-auto no-scrollbar">
-                        <TabButton tab="home" label="ホーム" />
-                        <TabButton tab="videos" label="動画" />
-                        <TabButton tab="shorts" label="ショート" />
-                    </div>
-                </div>
-                
-                <div className="mt-6">
-                    {activeTab === 'home' && renderHomeTab()}
-                    {activeTab === 'videos' && renderVideosTab()}
-                    {activeTab === 'shorts' && renderShortsTab()}
-                </div>
             </div>
+
+            <div className="flex border-b border-yt-spec-light-20 dark:border-yt-spec-20 mb-6 overflow-x-auto no-scrollbar">
+                <TabButton tab="home" label="ホーム" />
+                <TabButton tab="videos" label="動画" />
+                <TabButton tab="shorts" label="ショート" />
+            </div>
+
+            {activeTab === 'home' && renderHomeTab()}
+            
+            {activeTab === 'videos' && (
+                <div>
+                     <VideoGrid videos={videos} isLoading={isTabLoading} hideChannelInfo />
+                     {isFetchingMore && <div className="text-center py-4"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-yt-blue mx-auto"></div></div>}
+                     <div ref={lastElementRef} className="h-10" />
+                </div>
+            )}
+            
+            {activeTab === 'shorts' && (
+                <div>
+                    {isTabLoading && shorts.length === 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+                            {Array.from({ length: 12 }).map((_, index) => (
+                                <div key={index} className="w-full aspect-[9/16] rounded-xl bg-yt-light dark:bg-yt-dark-gray animate-pulse"></div>
+                            ))}
+                        </div>
+                    ) : shorts.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+                            {shorts.map(short => (
+                                <ShortsCard 
+                                    key={short.id} 
+                                    video={short} 
+                                    context={{ type: 'channel', channelId: channelDetails.id }} 
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center p-8 text-yt-light-gray">このチャンネルにはショート動画がありません。</div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
