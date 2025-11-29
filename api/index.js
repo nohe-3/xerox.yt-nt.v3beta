@@ -363,49 +363,33 @@ app.get('/api/playlist', async (req, res) => {
   }
 });
 
-// -------------------------------------------------------------------
-// ホームフィード RAW そのまま返す API (/api/fshorts?page=x)
-// ゲストモードで取得、ショート抽出はしない（加工ゼロ）
-// -------------------------------------------------------------------
-app.get('/api/fshorts', async (req, res) => {
+/app.get('/api/fshorts', async (req, res) => {
   try {
     const { page = '1' } = req.query;
     const targetPage = Math.max(1, parseInt(page, 10) || 1);
 
-    const youtube = await createYoutube();
+    // ログイン Cookie を渡す
+    const youtube = await Innertube.create({
+      cookies: process.env.YT_COOKIE, // サーバー環境変数に保存
+      lang: 'ja',
+      location: 'JP'
+    });
 
-    // 1ページ目を取得
     let feed = await youtube.getHomeFeed();
-
-    // page>1 の場合は continuation を進める
     let currentPage = 1;
-    while (currentPage < targetPage) {
-      if (!feed || !feed.has_continuation) break;
-      try {
-        feed = await feed.getContinuation();
-      } catch (e) {
-        console.warn(`[api/fshorts] continuation failed at page ${currentPage + 1}:`, e.message);
-        break;
-      }
+    while (currentPage < targetPage && feed.has_continuation) {
+      feed = await feed.getContinuation();
       currentPage++;
     }
 
-    // 関数やクラスの参照が含まれている可能性があるため
-    // シンプルな JSON に変換して返す（加工ゼロの"構造そのまま"）
     const raw = JSON.parse(JSON.stringify(feed));
-
-    res.status(200).json({
-      page: targetPage,
-      hasMore: !!(feed && feed.has_continuation),
-      raw // ホームフィードの生データ（JSON化済）
-    });
+    res.status(200).json({ page: targetPage, hasMore: !!feed.has_continuation, raw });
 
   } catch (err) {
-    console.error("Error in /api/fshorts (raw):", err);
+    console.error("Error in /api/fshorts (logged-in):", err);
     res.status(500).json({ error: String(err) });
   }
 });
-
 
 // -------------------------------------------------------------------
 // ホームフィード（旧急上昇） API (/api/fvideo)
