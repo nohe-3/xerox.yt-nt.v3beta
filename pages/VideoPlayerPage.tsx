@@ -35,7 +35,6 @@ const VideoPlayerPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
     const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
-    const [player, setPlayer] = useState<any>(null);
     const playerRef = useRef<HTMLDivElement>(null);
     const [playlistVideos, setPlaylistVideos] = useState<Video[]>([]);
     const [isCollaboratorMenuOpen, setIsCollaboratorMenuOpen] = useState(false);
@@ -43,6 +42,7 @@ const VideoPlayerPage: React.FC = () => {
     
     // Use ref to hold player instance to prevent stale closure issues and unnecessary re-renders
     const playerInstanceRef = useRef<any>(null);
+    const [playerConfig, setPlayerConfig] = useState<Record<string, string> | null>(null);
 
     const [isShuffle, setIsShuffle] = useState(searchParams.get('shuffle') === '1');
     const [isLoop, setIsLoop] = useState(searchParams.get('loop') === '1');
@@ -99,45 +99,59 @@ const VideoPlayerPage: React.FC = () => {
         onPlayerStateChangeRef.current = onPlayerStateChange;
     }, [onPlayerStateChange]);
 
+    useEffect(() => {
+        const fetchConfig = async () => {
+            try {
+                const paramsString = await getPlayerConfig();
+                const searchParams = new URLSearchParams(paramsString);
+                const config: Record<string, string> = {};
+                for (const [key, value] of searchParams.entries()) {
+                    config[key] = value;
+                }
+                setPlayerConfig(config);
+            } catch (error) {
+                console.error("Failed to fetch player config, using defaults", error);
+                setPlayerConfig({ autoplay: '1', playsinline: '1', rel: '0' });
+            }
+        };
+        fetchConfig();
+    }, []);
+
     // Initialize or Update Player
     useEffect(() => {
-        const loadOrUpdatePlayer = () => {
-            if (!videoId) return;
+        // Only run when we have a video ID and the player config
+        if (!videoId || !playerConfig) return;
 
-            // If player instance exists, just load the new video by ID
+        const loadOrUpdatePlayer = () => {
+             if (!videoId || !playerConfig) return; 
+
             if (playerInstanceRef.current && typeof playerInstanceRef.current.loadVideoById === 'function') {
                 playerInstanceRef.current.loadVideoById(videoId);
                 return;
             }
 
-            // Create new player if it doesn't exist and DOM is ready
             if (window.YT && window.YT.Player && playerRef.current) {
                 playerInstanceRef.current = new window.YT.Player(playerRef.current, {
                     videoId: videoId,
-                    playerVars: {
-                        autoplay: 1,
-                        playsinline: 1,
-                        rel: 0,
-                    },
+                    host: 'https://www.youtubeeducation.com',
+                    playerVars: playerConfig,
                     events: {
                         'onStateChange': (event: any) => onPlayerStateChangeRef.current(event)
                     }
                 });
-                setPlayer(playerInstanceRef.current);
             }
         };
 
         if (!window.YT) {
             const tag = document.createElement('script');
             tag.src = "https://www.youtube.com/iframe_api";
-            // Handle async load
             window.onYouTubeIframeAPIReady = loadOrUpdatePlayer;
             const firstScriptTag = document.getElementsByTagName('script')[0];
             firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
         } else {
             loadOrUpdatePlayer();
         }
-    }, [videoId]); // Run whenever videoId changes
+    }, [videoId, playerConfig]);
 
     // Cleanup on unmount only
     useEffect(() => {
@@ -149,7 +163,6 @@ const VideoPlayerPage: React.FC = () => {
                     console.warn("Player destroy failed", e);
                 }
                 playerInstanceRef.current = null;
-                setPlayer(null);
             }
         };
     }, []);
