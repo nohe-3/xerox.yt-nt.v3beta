@@ -486,7 +486,7 @@ const VideoPlayerPage: React.FC = () => {
                     {/* Actions Bar Container */}
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 pb-2">
                         {/* Left: Channel Info & Subscribe */}
-                        <div className="flex items-center justify-between md:justify-start w-full md:w-auto gap-4">
+                        <div className="flex items-center justify-between md:justify-start w-full md:w-auto gap-4 flex-1 min-w-0">
                             <div className="flex items-center min-w-0 flex-1 md:flex-initial">
                                 <Link to={`/channel/${mainChannel.id}`} className="flex-shrink-0">
                                     <img src={mainChannel.avatarUrl} alt={mainChannel.name} className="w-10 h-10 rounded-full object-cover" />
@@ -498,7 +498,7 @@ const VideoPlayerPage: React.FC = () => {
                                                 className="flex items-center cursor-pointer hover:opacity-80 group select-none"
                                                 onClick={() => setIsCollaboratorMenuOpen(!isCollaboratorMenuOpen)}
                                             >
-                                                <span className="font-bold text-base text-black dark:text-white truncate block max-w-[200px]">
+                                                <span className="font-bold text-base text-black dark:text-white truncate block max-w-[120px] sm:max-w-[200px]">
                                                     {mainChannel.name} 他
                                                 </span>
                                                 <div className={`transform transition-transform duration-200 ${isCollaboratorMenuOpen ? 'rotate-90' : ''}`}>
@@ -534,7 +534,7 @@ const VideoPlayerPage: React.FC = () => {
                                             )}
                                         </>
                                     ) : (
-                                        <Link to={`/channel/${mainChannel.id}`} className="font-bold text-base text-black dark:text-white hover:text-opacity-80 truncate block">
+                                        <Link to={`/channel/${mainChannel.id}`} className="font-bold text-base text-black dark:text-white hover:text-opacity-80 truncate block max-w-[120px] sm:max-w-[200px] md:max-w-[250px]">
                                             {mainChannel.name}
                                         </Link>
                                     )}
@@ -555,7 +555,7 @@ const VideoPlayerPage: React.FC = () => {
                         </div>
 
                         {/* Right: Action Buttons */}
-                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 md:pb-0 w-full md:w-auto">
+                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 md:pb-0 w-full md:w-auto flex-shrink-0">
                             <div className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0">
                                 <button className="flex items-center px-3 sm:px-4 h-full border-r border-yt-light-gray/20 gap-2">
                                     <LikeIcon />
@@ -582,7 +582,8 @@ const VideoPlayerPage: React.FC = () => {
                                 <SaveIcon />
                             </button>
 
-                            <button className="flex items-center justify-center bg-yt-light dark:bg-[#272727] rounded-full w-9 h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0">
+                            <button className="flex items-center justify-center bg-yt-light dark:bg-[#272727] rounded-full w-9 h-9 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors flex-shrink-0"
+                            >
                                 <MoreIconHorizontal />
                             </button>
                         </div>
