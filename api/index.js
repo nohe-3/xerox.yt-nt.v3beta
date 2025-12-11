@@ -566,11 +566,14 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 if (!process.env.VERCEL) {
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`API Server running on port ${PORT}`);
+    console.log(`Health check available at http://0.0.0.0:${PORT}/api/health`);
   });
+  server.keepAliveTimeout = 120000;
+  server.headersTimeout = 120000;
 }
 
 export default app;
