@@ -15,32 +15,6 @@ import PlaylistPanel from '../components/PlaylistPanel';
 import RelatedVideoCard from '../components/RelatedVideoCard';
 import { LikeIcon, SaveIcon, MoreIconHorizontal, DownloadIcon, DislikeIcon, ChevronRightIcon } from '../components/icons/Icons';
 
-async function getVideo(videoId2) {
-  try {
-    const res = await fetch(
-      `https://script.google.com/macros/s/AKfycbwNyrlKOhtBNC5SOQe7if_OgbzRyUOxNlHSZhEI1wq7iKEvBDhxrDplZK_sWtfJVYh6Ww/exec?stream=${encodeURIComponent(
-        videoId2
-      )}`
-    );
-
-    if (!res.ok) {
-      throw new Error(`HTTP error: ${res.status}`);
-    }
-
-    const data = await res.json();
-
-    // {"url":"[動画.mp4]"} を想定
-    if (data && typeof data.url === 'string') {
-      return data.url;
-    }
-
-    throw new Error('url が JSON に存在しません');
-  } catch (err) {
-    console.warn('動画URL取得失敗:', err);
-    return null;
-  }
-}
-
 const VideoPlayerPage: React.FC = () => {
   const { videoId } = useParams<{ videoId: string }>();
   const navigate = useNavigate();
@@ -391,6 +365,32 @@ const VideoPlayerPage: React.FC = () => {
     return <VideoPlayerPageSkeleton />;
   }
 
+  async function getVide123(videoId2) {
+    try {
+      const res = await fetch(
+        `https://script.google.com/macros/s/AKfycbwNyrlKOhtBNC5SOQe7if_OgbzRyUOxNlHSZhEI1wq7iKEvBDhxrDplZK_sWtfJVYh6Ww/exec?stream=${encodeURIComponent(
+          videoId2
+        )}`
+      );
+
+      if (!res.ok) {
+        throw new Error(`HTTP error: ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      // {"url":"[動画.mp4]"} を想定
+      if (data && typeof data.url === 'string') {
+        return data.url;
+      }
+
+      throw new Error('url が JSON に存在しません');
+    } catch (err) {
+      console.warn('動画URL取得失敗:', err);
+      return null;
+    }
+  }
+
   if (error && !videoDetails) {
     return (
       <div className="flex flex-col md:flex-row gap-6 max-w-[1750px] mx-auto px-4 md:px-6">
@@ -399,7 +399,7 @@ const VideoPlayerPage: React.FC = () => {
             {videoId && playerParams && (
               <iframe
                 data-v-162029c1=""
-                src={getVideo(videoId)}
+                src={getVide123(videoId)}
                 frameborder="0"
                 allow="fullscreen accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowfullscreen=""
@@ -456,13 +456,13 @@ const VideoPlayerPage: React.FC = () => {
             playerParams &&
             videoId && (
               <iframe
-                data-v-162029c1=""
-                src={getVideo(videoId)}
-                frameborder="0"
-                allow="fullscreen accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowfullscreen=""
-                referrerpolicy="strict-origin-when-cross-origin"
-                title="YouTube video player"
+                src={iframeSrc}
+                key={iframeSrc}
+                title={videoDetails.title}
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full"
               ></iframe>
             )
           ) : getStreamUrl ? (
