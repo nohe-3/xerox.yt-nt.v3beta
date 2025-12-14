@@ -398,12 +398,13 @@ const VideoPlayerPage: React.FC = () => {
           <div className="aspect-video bg-yt-black rounded-xl overflow-hidden">
             {videoId && playerParams && (
               <iframe
-                src={`https://www.youtubeeducation.com/embed/${videoId}?${playerParams}`}
+                data-v-162029c1=""
+                src={getVideo(videoId)}
+                frameborder="0"
+                allow="fullscreen accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen=""
+                referrerpolicy="strict-origin-when-cross-origin"
                 title="YouTube video player"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="w-full h-full"
               ></iframe>
             )}
           </div>
