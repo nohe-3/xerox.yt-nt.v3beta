@@ -297,26 +297,26 @@ const VideoPlayerPage: React.FC = () => {
     return () => window.removeEventListener('message', handleMessage);
   }, [navigateToNextVideo]);
 
-  const iframeSrc = useMemo(() => {
-    if (!videoDetails?.id || !playerParams) return '';
-    let src = `https://www.youtubeeducation.com/embed/${videoDetails.id}`;
-    let params = playerParams.startsWith('?') ? playerParams.substring(1) : playerParams;
+  // const iframeSrc = useMemo(() => {
+  //   if (!videoDetails?.id || !playerParams) return '';
+  //   let src = `https://www.youtubeeducation.com/embed/${videoDetails.id}`;
+  //   let params = playerParams.startsWith('?') ? playerParams.substring(1) : playerParams;
 
-    // Ensure enablejsapi=1 is present for event listening
-    if (!params.includes('enablejsapi')) {
-      params += '&enablejsapi=1';
-    }
-    // Add origin to ensure we can receive messages from the iframe
-    if (!params.includes('origin')) {
-      params += `&origin=${encodeURIComponent(window.location.origin)}`;
-    }
-    // Ensure autoplay is set
-    if (!params.includes('autoplay')) {
-      params += '&autoplay=1';
-    }
+  //   // Ensure enablejsapi=1 is present for event listening
+  //   if (!params.includes('enablejsapi')) {
+  //     params += '&enablejsapi=1';
+  //   }
+  //   // Add origin to ensure we can receive messages from the iframe
+  //   if (!params.includes('origin')) {
+  //     params += `&origin=${encodeURIComponent(window.location.origin)}`;
+  //   }
+  //   // Ensure autoplay is set
+  //   if (!params.includes('autoplay')) {
+  //     params += '&autoplay=1';
+  //   }
 
-    return `${src}?${params}`;
-  }, [videoDetails, playerParams]);
+  //   return `${src}?${params}`;
+  // }, [videoDetails, playerParams]);
 
   // Get 360p MP4 URL for Stream mode
   const getStreamUrl = useMemo(() => {
@@ -391,6 +391,21 @@ const VideoPlayerPage: React.FC = () => {
     }
   }
 
+  useEffect(() => {
+    async function loadIframe() {
+      const url = await getVide123(videoId);
+      if (url) {
+        setIframeSrc(url);
+      }
+    }
+
+    if (videoId) {
+      loadIframe();
+    }
+  }, [videoId]);
+
+  const [iframeSrc, setIframeSrc] = useState(null);
+
   if (error && !videoDetails) {
     return (
       <div className="flex flex-col md:flex-row gap-6 max-w-[1750px] mx-auto px-4 md:px-6">
@@ -399,7 +414,7 @@ const VideoPlayerPage: React.FC = () => {
             {videoId && playerParams && (
               <iframe
                 data-v-162029c1=""
-                src={getVide123(videoId)}
+                src={iframeSrc}
                 frameborder="0"
                 allow="fullscreen accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowfullscreen=""
@@ -456,13 +471,13 @@ const VideoPlayerPage: React.FC = () => {
             playerParams &&
             videoId && (
               <iframe
+                data-v-162029c1=""
                 src={iframeSrc}
-                key={iframeSrc}
+                frameborder="0"
+                allow="fullscreen accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen=""
+                referrerpolicy="strict-origin-when-cross-origin"
                 title={videoDetails.title}
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="w-full h-full"
               ></iframe>
             )
           ) : getStreamUrl ? (
