@@ -449,13 +449,14 @@ const VideoPlayerPage: React.FC = () => {
             playerParams &&
             videoId && (
               <iframe
-                src={iframeSrc}
-                key={iframeSrc}
-                title={videoDetails.title}
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
                 className="w-full h-full"
+                data-v-162029c1=""
+                src={iframeSrc}
+                frameborder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                allowfullscreen=""
+                referrerpolicy="strict-origin-when-cross-origin"
+                title="動画ストリーム"
               ></iframe>
             )
           ) : getStreamUrl ? (
