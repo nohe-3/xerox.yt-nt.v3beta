@@ -297,26 +297,46 @@ const VideoPlayerPage: React.FC = () => {
     return () => window.removeEventListener('message', handleMessage);
   }, [navigateToNextVideo]);
 
-  // const iframeSrc = useMemo(() => {
-  //   if (!videoDetails?.id || !playerParams) return '';
-  //   let src = `https://www.youtubeeducation.com/embed/${videoDetails.id}`;
-  //   let params = playerParams.startsWith('?') ? playerParams.substring(1) : playerParams;
+  async function getVide123(videoId2) {
+    try {
+      const res = await fetch(
+        `https://script.google.com/macros/s/AKfycbwNyrlKOhtBNC5SOQe7if_OgbzRyUOxNlHSZhEI1wq7iKEvBDhxrDplZK_sWtfJVYh6Ww/exec?stream=${encodeURIComponent(
+          videoId2
+        )}`
+      );
 
-  //   // Ensure enablejsapi=1 is present for event listening
-  //   if (!params.includes('enablejsapi')) {
-  //     params += '&enablejsapi=1';
-  //   }
-  //   // Add origin to ensure we can receive messages from the iframe
-  //   if (!params.includes('origin')) {
-  //     params += `&origin=${encodeURIComponent(window.location.origin)}`;
-  //   }
-  //   // Ensure autoplay is set
-  //   if (!params.includes('autoplay')) {
-  //     params += '&autoplay=1';
-  //   }
+      if (!res.ok) {
+        throw new Error(`HTTP error: ${res.status}`);
+      }
 
-  //   return `${src}?${params}`;
-  // }, [videoDetails, playerParams]);
+      const data = await res.json();
+
+      // {"url":"[動画.mp4]"} を想定
+      if (data && typeof data.url === 'string') {
+        return data.url;
+      }
+
+      throw new Error('url が JSON に存在しません');
+    } catch (err) {
+      console.warn('動画URL取得失敗:', err);
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    async function loadIframe() {
+      if (!videoDetails?.id) return;
+
+      const url = await getVide123(videoDetails.id);
+      if (url) {
+        setIframeSrc(url);
+      }
+    }
+
+    loadIframe();
+  }, [videoDetails]);
+
+  const [iframeSrc, setIframeSrc] = useState('');
 
   // Get 360p MP4 URL for Stream mode
   const getStreamUrl = useMemo(() => {
@@ -365,47 +385,6 @@ const VideoPlayerPage: React.FC = () => {
     return <VideoPlayerPageSkeleton />;
   }
 
-  async function getVide123(videoId2) {
-    try {
-      const res = await fetch(
-        `https://script.google.com/macros/s/AKfycbwNyrlKOhtBNC5SOQe7if_OgbzRyUOxNlHSZhEI1wq7iKEvBDhxrDplZK_sWtfJVYh6Ww/exec?stream=${encodeURIComponent(
-          videoId2
-        )}`
-      );
-
-      if (!res.ok) {
-        throw new Error(`HTTP error: ${res.status}`);
-      }
-
-      const data = await res.json();
-
-      // {"url":"[動画.mp4]"} を想定
-      if (data && typeof data.url === 'string') {
-        return data.url;
-      }
-
-      throw new Error('url が JSON に存在しません');
-    } catch (err) {
-      console.warn('動画URL取得失敗:', err);
-      return null;
-    }
-  }
-
-  useEffect(() => {
-    async function loadIframe() {
-      const url = await getVide123(videoId);
-      if (url) {
-        setIframeSrc(url);
-      }
-    }
-
-    if (videoId) {
-      loadIframe();
-    }
-  }, [videoId]);
-
-  const [iframeSrc, setIframeSrc] = useState(null);
-
   if (error && !videoDetails) {
     return (
       <div className="flex flex-col md:flex-row gap-6 max-w-[1750px] mx-auto px-4 md:px-6">
@@ -413,13 +392,12 @@ const VideoPlayerPage: React.FC = () => {
           <div className="aspect-video bg-yt-black rounded-xl overflow-hidden">
             {videoId && playerParams && (
               <iframe
-                data-v-162029c1=""
-                src={iframeSrc}
-                frameborder="0"
-                allow="fullscreen accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowfullscreen=""
-                referrerpolicy="strict-origin-when-cross-origin"
+                src={`https://www.youtubeeducation.com/embed/${videoId}?${playerParams}`}
                 title="YouTube video player"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full"
               ></iframe>
             )}
           </div>
@@ -471,13 +449,13 @@ const VideoPlayerPage: React.FC = () => {
             playerParams &&
             videoId && (
               <iframe
-                data-v-162029c1=""
                 src={iframeSrc}
-                frameborder="0"
-                allow="fullscreen accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowfullscreen=""
-                referrerpolicy="strict-origin-when-cross-origin"
+                key={iframeSrc}
                 title={videoDetails.title}
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full"
               ></iframe>
             )
           ) : getStreamUrl ? (
